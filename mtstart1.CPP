@@ -9,7 +9,6 @@
 #include "mtstart.h"
 #include "memtest.h"
 
-BOOL GetMemorySizes(MemorySizes * pSizes);
 BOOL IsV86();
 
 #ifdef _DEBUG
