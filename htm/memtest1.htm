@@ -10,11 +10,12 @@
 			AleGr MEMTEST is a program for testing DRAM (main memory) of PC-compatible 
 			computers built on Intel 386 or higher processor. The version 2.0 is now able 
 			to run under Windows.</p>
-		<P>Ancient memory testing programs were written for cacheless processors.&nbsp; 
-			This program is written with knowledge of system bus, cache and main memory of 
-			80486, Pentium and Pentium Pro (Pentium II) processors. Test patterns used by 
-			the program are designed to test burst transfers between CPU and L2 cache 
-			and/or memory. Such transfers occur most of the time in real applications.</P>
+		<P>Some of older programs for memory testing were written for cacheless 
+			processors.&nbsp; This program is written with knowledge of system bus, cache 
+			and main memory of 80486, Pentium and Pentium Pro (Pentium II) processors. Test 
+			patterns and access sequences used by the program are designed to test burst 
+			transfers between CPU and L2 cache and/or memory. Such transfers occur most of 
+			the time in real applications.</P>
 		<P>Maximum size of memory the program is able to test is 3 gigabytes under DOS and 
 			less than 2 gigabytes under Windows. If you have 4 GB or more, you can start 
 			several test sessions under Windows, to cover all the memory.</P>
@@ -28,7 +29,7 @@
 			for information about buing a license and support. Source code can also be 
 			purchased.</P>
 		<P align="left">
-			There is no guarantee of any kind. WARNING: On some low-power systems, the 
+			WARNING: There is no guarantee of any kind. On some low-power systems, the 
 			program may cause excessive current consumption, and trigger overcurrent 
 			protection or cause permanent damage. When the program is run under Windows, it 
 			can cause a marginally stable&nbsp;system to crash with possible loss of data 
@@ -54,7 +55,8 @@
 			but&nbsp;you will need to use <STRONG>/ignorexmm</STRONG> (or <STRONG>/ig</STRONG>) 
 			command line option.</P>
 		<P><STRONG>If you run Windows 2000 or XP:</STRONG></P>
-		<P>Windows 2000 and XP cannot boot into DOS. You will need to boot from a floppy.</P>
+		<P>Windows 2000 and XP cannot boot into DOS. You will need to boot from a floppy. 
+			You can create a boot disk during floppy format.</P>
 		<p>Command line to start the program is as follows:</p>
 		<p><font face="Times New Roman"><samp><strong>MEMTEST &lt;memory size&gt; &lt;base address of 
 						area to test&gt; /program switches</strong></samp></font></p>
@@ -144,18 +146,18 @@
 				<DIV align="left">
 					there are known IDE RAID controller chipsets&nbsp;that suffer from data 
 					corruption during&nbsp;simultaneous data transfer on both IDE channels under 
-					Windows 2000,&nbsp;when overall throughput of IDE interface exceeds PCI bus 
-					throughput. Probably the controller could not properly arbitrate requests from 
-					its own channels in case of contention.</DIV>
+					Windows 2000 and Linux,&nbsp;when overall throughput of IDE interface exceeds 
+					PCI bus throughput. Probably the controller could not properly arbitrate 
+					requests from its own channels in case of contention.</DIV>
 			<LI>
-				<DIV align="left">a mainboard in my computer suffered from memory corruption (some 
-					bits were unstable) during heavy disk I/O. The computer crashed, whenever I 
-					tried to copy about 10 GB of files. The problem never showed up in DOS-based 
+				<DIV align="left">a mainboard in my computer was suffering from memory corruption 
+					(some bits were unstable) during heavy disk I/O. The computer crashed, whenever 
+					I tried to copy about 10 GB of files. The problem never showed up in DOS-based 
 					MEMTEST run, but the new test could catch the error in a couple of minutes. 
 					DIMM and CPU replacement didn't help. A new board with the same chipset (though 
 					slightly different modification - without on-chip video controller), but from 
 					different OEM, works fine. I don't know&nbsp;whether it was the board layout 
-					problem, or some traces had cracks.
+					problem, or some PCB traces had defects.
 				</DIV>
 			</LI>
 		</UL>
@@ -166,7 +168,9 @@
 		<P>/<U>mem</U>ory:&lt;n&gt; - specifies the test area size in megabytes, from 4 to 
 			1024. There can be up to 4 <STRONG>/memory</STRONG> command line switches. Each 
 			of them causes the program to start a test thread. /pattern option that goes 
-			after /memory specifies a test pattern for this thread.</P>
+			after /memory specifies a test pattern for this thread.Max total allowed memory 
+			size is about 2000 MB. If you'd like to test bigger memory, you can start a 
+			couple of test sessions.</P>
 		<P>/<U>fi</U>le:&lt;directory&gt; &lt;n&gt; - specifies the test&nbsp;file location 
 			and&nbsp;size in megabytes (from 4 up to 64000). There can be up to 4 <STRONG>/file</STRONG>
 			command line switches. Each of them causes the program to start a test thread. 
@@ -229,7 +233,7 @@
 						01111111111111110111111111111111 01111111111111110111111111111111<BR>
 						10000000000000001000000000000000 10000000000000001000000000000000</CODE></FONT></P>
 			<P align="left">The test patterns can be specified in the program command line. The 
-				default pattern is ranning zero/running one pair, like shown above. This test 
+				default pattern is running zero/running one pair, like shown above. This test 
 				sequence allows also to check the system bus in maximum noise conditions.
 			</P>
 			<P align="left">
