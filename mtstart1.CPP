@@ -402,58 +402,58 @@ BOOL ProcessCommandLine(int argc, char * * argv, MEMTEST_STARTUP_PARAMS * pParam
         }
         else if (IsOption(option, "wr*itethru"))
         {
-            pParams->Flags |= TEST_FLAGS_WRITETHRU;
+            pParams->m_Flags |= TEST_FLAGS_WRITETHRU;
         }
         else if (IsOption(option, "noca*che"))
         {
-            pParams->Flags |= TEST_FLAGS_NOCACHE;
+            pParams->m_Flags |= TEST_FLAGS_NOCACHE;
         }
         else if (IsOption(option, "pre*heat"))
         {
-            pParams->Flags |= TEST_FLAGS_PREHEAT_MEMORY;
+            pParams->m_Flags |= TEST_FLAGS_PREHEAT_MEMORY;
         }
         else if (IsOption(option, "sp*eed"))
         {
-            pParams->Flags |= TEST_FLAGS_PERFORMANCE;
+            pParams->m_Flags |= TEST_FLAGS_PERFORMANCE;
         }
         else if (IsOption(option, "re*adtwice"))
         {
-            pParams->Flags |= TEST_READ_TWICE;
+            pParams->m_Flags |= TEST_READ_TWICE;
         }
         else if (IsOption(option, "noch*eck"))
         {
-            pParams->Flags |= TEST_NO_MACHINE_CHECK;
+            pParams->m_Flags |= TEST_NO_MACHINE_CHECK;
         }
         else if (IsOption(option, "fa*stdetect"))
         {
-            pParams->Flags |= TEST_FLAGS_FASTDETECT;
+            pParams->m_Flags |= TEST_FLAGS_FASTDETECT;
         }
         else if (IsOption(option, "ig*norexmm"))
         {
-            pParams->Flags |= TEST_FLAGS_IGNORE_XMM;
+            pParams->m_Flags |= TEST_FLAGS_IGNORE_XMM;
         }
         else if (IsOption(option, "nopr*efetch"))
         {
-            pParams->Flags |= TEST_FLAGS_NOPREFETCH;
+            pParams->m_Flags |= TEST_FLAGS_NOPREFETCH;
         }
         else if (IsOption(option, "nola*rgepages"))
         {
-            pParams->Flags |= TEST_FLAGS_NOLARGEPAGES;
+            pParams->m_Flags |= TEST_FLAGS_NOLARGEPAGES;
         }
         else if (NULL != (nextch = IsOption(option, "pat:tern")))
         {
             char * last;
-            pParams->Pattern1 = strtoul(nextch, & last, 16);
+            pParams->m_Pattern1 = strtoul(nextch, & last, 16);
 
             if (NULL != last && *last == ':')
             {
-                pParams->Flags |= TEST_FLAGS_PATTERN;
-                pParams->Pattern2 = strtoul(last+1, & last, 16);
+                pParams->m_Flags |= TEST_FLAGS_PATTERN;
+                pParams->m_Pattern2 = strtoul(last+1, & last, 16);
             }
         }
         else if (IsOption(option, "nous*blegacy"))
         {
-            pParams->Flags |= TEST_NO_USB_LEGACY;
+            pParams->m_Flags |= TEST_NO_USB_LEGACY;
         }
         else if (NULL != (nextch = IsOption(option, "pas:scount")))
         {
@@ -476,7 +476,7 @@ BOOL ProcessCommandLine(int argc, char * * argv, MEMTEST_STARTUP_PARAMS * pParam
             {
                 return FALSE;
             }
-            pParams->PassCount = count;
+            pParams->m_PassCount = count;
         }
         else
         {
@@ -503,11 +503,10 @@ int _cdecl main(int argc, char *argv[])
     }
 
     PROTECTED_MODE_STARTUP_DATA Startup;
-    memset( & Startup, 0, sizeof Startup);
+    Startup.pProgramBase = 0;
+    Startup.ProgramEntry = 0;
+    Startup.ProgramSize = 0;
 
-    Startup.msp.MemoryTop = 0xC0000000;   // 3 GB
-    Startup.msp.LongDelay = 60000;
-    Startup.msp.ShortDelay = 1000;
     Startup.msp.RandomSeed = time(NULL);
 
     if ( ! ProcessCommandLine( argc, argv, & Startup.msp))
@@ -519,7 +518,7 @@ int _cdecl main(int argc, char *argv[])
     printf("Going to check for bare DOS...(press Enter)");
     fgets(fgetsbuf, sizeof fgetsbuf, stdin);
 #endif
-    if ( ! IsBareDOS(0 != (Startup.msp.Flags & TEST_FLAGS_IGNORE_XMM)))
+    if ( ! IsBareDOS(0 != (Startup.msp.m_Flags & TEST_FLAGS_IGNORE_XMM)))
     {
         fputs("\nError: Can't run - memory managers detected.\n"
               "\tThe program can be run only from bare DOS.\n"
@@ -545,7 +544,7 @@ int _cdecl main(int argc, char *argv[])
     Startup.msp.CpuType = WORD(CpuType);
     Startup.msp.CpuFeatures = WORD(CpuType >> 16);
 
-    if (Startup.msp.PassCount != 0)
+    if (Startup.msp.m_PassCount != 0)
     {
         CheckForTestRerun();
         // set RTC values to detect crash
@@ -568,7 +567,7 @@ int _cdecl main(int argc, char *argv[])
 #endif
     ResetFloppies();
 
-    if (Startup.msp.Flags & TEST_NO_USB_LEGACY)
+    if (Startup.msp.m_Flags & TEST_NO_USB_LEGACY)
     {
         DisableUsbLegacy( & Startup.msp);
     }

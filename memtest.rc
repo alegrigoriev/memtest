@@ -1,4 +1,4 @@
-//Microsoft Developer Studio generated resource script.
+// Microsoft Visual C++ generated resource script.
 //
 #include "resource.h"
 
@@ -44,15 +44,15 @@ BEGIN
     BEGIN
         BLOCK "000004b0"
         BEGIN
-            VALUE "Comments", "System memory test for Intel x86-based computers\0"
-            VALUE "CompanyName", "AleGr SoftWare\0"
-            VALUE "FileDescription", "System memory test for 586+ computers\0"
-            VALUE "FileVersion", "1, 0, 5, 0\0"
-            VALUE "InternalName", "memtest\0"
-            VALUE "LegalCopyright", "Copyright © 1997-2002 Alexander Grigoriev\0"
-            VALUE "OriginalFilename", "memtest.exe\0"
-            VALUE "ProductName", "AleGr SoftWare memtest\0"
-            VALUE "ProductVersion", "1, 0, 5, 0\0"
+            VALUE "Comments", "System memory test for Intel x86-compatible computers"
+            VALUE "CompanyName", "AleGr SoftWare"
+            VALUE "FileDescription", "System memory test for x86 computers"
+            VALUE "FileVersion", "1, 0, 5, 0"
+            VALUE "InternalName", "memtest"
+            VALUE "LegalCopyright", "Copyright © 1997-2002 Alexander Grigoriev"
+            VALUE "OriginalFilename", "memtest.exe"
+            VALUE "ProductName", "AleGr SoftWare memtest"
+            VALUE "ProductVersion", "1, 0, 5, 0"
         END
     END
     BLOCK "VarFileInfo"

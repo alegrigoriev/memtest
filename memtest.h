@@ -181,6 +181,9 @@ struct PROTECTED_MODE_STARTUP_MEMORY
     DWORD StartupArgument;
 };
 
+#define MEGABYTE 0x100000LU
+#define GIGABYTE 0x40000000LU
+
 struct MEMTEST_STARTUP_PARAMS
 {
     WORD CpuType;       // 386, 486, 586, 686
@@ -192,13 +195,36 @@ struct MEMTEST_STARTUP_PARAMS
     DWORD LongDelay;
     DWORD RowSize;
     DWORD RandomSeed;
-    DWORD Flags;
-    DWORD Pattern1;
-    DWORD Pattern2;
-    WORD PassCount;
+    DWORD m_Flags;
+    DWORD m_Pattern1;
+    DWORD m_Pattern2;
+    WORD m_PassCount;
     WORD SMIEAddr;     // address of SMI Global Enable register in I/O space
     BYTE CursorRow;
     BYTE CursorColumn;
+    MEMTEST_STARTUP_PARAMS()
+    {
+        CpuType = 686;
+        CpuFeatures = 0;
+        MemoryStart = 0;
+        MemoryTop = 3 * GIGABYTE;
+        ProgramTop = 4 * MEGABYTE;
+        ShortDelay = 1000;
+        LongDelay = 60000;
+        RowSize = 0x10000L;
+        RandomSeed = 0xAAAA5555L;
+        m_Flags = TEST_PRELOAD_CACHE2
+                  | TEST_PRELOAD_CACHE1
+                  | TEST_EMPTY_CACHE
+                  | TEST_SEESAW
+                  | TEST_DELAY;
+        m_Pattern1 = 0x80008000L;
+        m_Pattern2 = ~0x80008000L;
+        m_PassCount = 0;
+        SMIEAddr = 0;
+        CursorRow = 0;
+        CursorColumn = 0;
+    }
 };
 
 struct PROTECTED_MODE_STARTUP_DATA

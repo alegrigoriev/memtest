@@ -33,7 +33,7 @@
 				Name="VCCustomBuildTool"/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalOptions="/MACHINE:I386 /FIXED"
+				AdditionalOptions="/MACHINE:I386 /FIXED /stub:memtst1.exe"
 				OutputFile=".\Debug/memtest.exe"
 				LinkIncremental="1"
 				SuppressStartupBanner="TRUE"
@@ -68,11 +68,15 @@
 			ATLMinimizesCRunTimeLibraryUsage="FALSE">
 			<Tool
 				Name="VCCLCompilerTool"
+				GlobalOptimizations="TRUE"
 				InlineFunctionExpansion="1"
+				EnableIntrinsicFunctions="TRUE"
 				OptimizeForProcessor="1"
 				PreprocessorDefinitions="NDEBUG,WIN32,_CONSOLE,STANDALONE"
 				StringPooling="TRUE"
+				ExceptionHandling="FALSE"
 				RuntimeLibrary="0"
+				BufferSecurityCheck="FALSE"
 				EnableFunctionLevelLinking="TRUE"
 				UsePrecompiledHeader="2"
 				PrecompiledHeaderFile=".\Release/memtest.pch"
@@ -85,7 +89,7 @@
 				Name="VCCustomBuildTool"/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalOptions="/MACHINE:I386 /FIXED"
+				AdditionalOptions="/MACHINE:I386 /FIXED /stub:memtst1.exe"
 				OutputFile=".\Release/memtest.exe"
 				LinkIncremental="1"
 				SuppressStartupBanner="TRUE"
