@@ -25,7 +25,8 @@
 		<H3 align="center">Licence terms</H3>
 		<P align="left">The program is free for personal (non-business) use. For business 
 			use, send email to <A href="mailto:alegr@earthlink.net">alegr@earthlink.net</A> 
-			for information about buing a licence. Source code can also be purchased.</P>
+			for information about buing a license and support. Source code can also be 
+			purchased.</P>
 		<P align="left">
 			There is no guarantee of any kind. WARNING: On some low-power systems, the 
 			program may cause excessive current consumption, and trigger overcurrent 
@@ -34,7 +35,7 @@
 			or OS damage.</P>
 		<H3 align="center">Running the program under "bare" DOS</H3>
 		<P>
-			"Bare" DOS means&nbsp;real mode DOS without any memory managers, such as 
+			"Bare" DOS means&nbsp;"real mode" DOS without any memory managers, such as 
 			HIMEM.SYS and EMM386.EXE.</P>
 		<P><STRONG>If you run Windows 95:</STRONG></P>
 		<P>
@@ -143,7 +144,9 @@
 				<DIV align="left">
 					there are known IDE RAID controller chipsets&nbsp;that suffer from data 
 					corruption during&nbsp;simultaneous data transfer on both IDE channels under 
-					Windows 2000;</DIV>
+					Windows 2000,&nbsp;when overall throughput of IDE interface exceeds PCI bus 
+					throughput. Probably the controller could not properly arbitrate requests from 
+					its own channels in case of contention.</DIV>
 			<LI>
 				<DIV align="left">a mainboard in my computer suffered from memory corruption (some 
 					bits were unstable) during heavy disk I/O. The computer crashed, whenever I 
@@ -160,12 +163,12 @@
 		<P><FONT face="Times New Roman"><SAMP><STRONG>MEMTEST&nbsp;&lt;program switches&gt;</STRONG></SAMP></FONT></P>
 		<P>The following command line switches are recognized:</P>
 		<P>/<U>ti</U>me:&lt;time limit&gt; - sets test time in minutes;</P>
-		<P>/<U>mem</U>ory:&lt;n&gt; - specifies the test area size in megabytes. There can 
-			be up to 4 <STRONG>/memory</STRONG> command line switches. Each of them causes 
-			the program to start a test thread. /pattern option that goes after /memory 
-			specifies a test pattern for this thread.</P>
+		<P>/<U>mem</U>ory:&lt;n&gt; - specifies the test area size in megabytes, from 4 to 
+			1024. There can be up to 4 <STRONG>/memory</STRONG> command line switches. Each 
+			of them causes the program to start a test thread. /pattern option that goes 
+			after /memory specifies a test pattern for this thread.</P>
 		<P>/<U>fi</U>le:&lt;directory&gt; &lt;n&gt; - specifies the test&nbsp;file location 
-			and&nbsp;size in megabytes (up to 64000). There can be up to 4 <STRONG>/file</STRONG>
+			and&nbsp;size in megabytes (from 4 up to 64000). There can be up to 4 <STRONG>/file</STRONG>
 			command line switches. Each of them causes the program to start a test thread. 
 			/pattern option that goes after /file specifies a test pattern for this thread.</P>
 		<P>/<U>maxe</U>rrors:&lt;n&gt; - maximum number of errors before the test stops. 
@@ -212,7 +215,7 @@
 		<P>The test can be stopped by pressing Ctrl+Break. It may not stop immediately, 
 			though.</P>
 		<hr>
-		<p align="center"><font size="4">Test set</font></p>
+		<p align="center"><font size="4">Memory test sequence</font></p>
 		<p align="left"><font size="3">First test performs pseudorandom data read/write. The 
 				data consists of "all ones"/"all zeros" patterns produced by pseudorandom 
 				sequence generator. The test checks for address errors.</font></p>
@@ -267,22 +270,35 @@
 			doubled on every test pass), and data is read from interlaced rows - 32 bytes 
 			from one row, 32 bytes from adjacent one. "All zeros" and "all ones" patterns 
 			allow also to induce maxium noise on adjacent column lines.</p>
-		<p>When running a standalone mode, the program relocates itself in the physical 
+		<p>When running in a standalone mode, the program relocates itself in the physical 
 			memory after every test pass, to test the area it just occupied.</p>
+		<P>In a standalone mode, every other pass includes 1 second delay between memory 
+			writing and reading. During the delay there are no accesses to the DRAM, 
+			because all instructions are fetched from the L1 cache. This allows to check 
+			how reliable is memory refresh. On two passes from 64 the delay is increased to 
+			60 seconds. These delays can be specified in the command line at the program 
+			start.</P>
 		<P>When running under Windows, the program decommits the memory area after every 
 			pass, it means releases the physical pages. It allows to test different pages 
 			every time.</P>
-		<p>Every other pass includes 1 second delay between memory writing and reading. 
-			During the delay there are no accesses to the DRAM, because all instructions 
-			are fetched from the L1 cache. This allows to check how reliable is memory 
-			refresh. On two passes from 64 the delay is increased to 60 seconds. These 
-			delays can be specified in the command line at the program start.</p>
 		<p>To test transfers from L2 cache to the processor, some of test passes are 
 			performed with data prefetched from the memory to L2 cache. Without such 
 			prefetch, the data goes directly from memory to the processor. To test 
 			transfers from processor to L2 cache, some of the test passes are performed 
-			with data prefetched to L2 cache during test pattern write. This prevents&nbsp; 
-			the direct writes from CPU to RAM.</p>
+			with data prefetched to L2 cache during test pattern write.</p>
+		<H3 align="center">File test sequence</H3>
+		<P align="left">To test file transfers, a temporary file (named TstXX.tmp) is 
+			created. Test file location and size (in megabytes from 4 to 640000) is 
+			specified in<STRONG> /file</STRONG> command line option. The program can run 
+			simultaneous read/write&nbsp;up to four&nbsp;files. The files are opened with 
+			file cache disabled.</P>
+		<P align="left">The file is first written with the specified pattern. The default 
+			initial pattern pair is 7FFF8000/80007FFF. The file is then read and compared 
+			with the pattern. In case of a mismatch, an error message is logged.</P>
+		<P align="left">The pattern is then cyclically shifted (rotated), each 16-bit word 
+			individually. For example 7FFF8000 becomes DFFF4000. This pattern is also 
+			written and verified. It repeats until the pattern returns to the original 
+			value.</P>
 		<H3 align="center">Changes history</H3>
 		<p align="left">2.00 (July 2002). Fixed a bug in memory speed test. Added 
 			capability to work under Windows. Removed default memory size limit in 512 
