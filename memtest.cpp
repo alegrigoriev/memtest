@@ -29,16 +29,15 @@ extern "C" {
 typedef int BOOL;
 typedef unsigned long DWORD;
 
-size_t cache1_preload_size = 4096;
-size_t cache2_preload_size = 1024 * 128;
-int refresh_delay = 1000;    // ms
-int long_delay = 60000; // 60 seconds
+const size_t cache1_preload_size = 4096;
+const size_t cache2_preload_size = 1024 * 128;
+
+MEMTEST_STARTUP_PARAMS TestParams;
+
 int TestDelay;
-DWORD RandomSeed;
-int PassCount;
+
 BOOL RebootOnFinish;
 static DWORD dwRandSeed = 0xFFFFFFFF;
-size_t SpecifiedRowSize = 0;
 size_t MemoryRowSize = 0;    // vary from 4K to 64K
 
 char * pMemoryToTestStart;
@@ -86,7 +85,6 @@ char * TopProgramAddress;
 #define CR4_MACHINE_CHECK_ENABLED 0x40    // bit 6
 
 BOOL f4MBPagesSupported;
-WORD CpuType;   // 386,486,586,686,786,....
 
 //////////////////////////////////////////////////////////////
 //// screen stuff
@@ -415,7 +413,7 @@ DWORD __stdcall WritePseudoRandom(void * addr,
         mov     ecx,_size
         mov     edi,seed
         mov     ebx,poly
-        cmp     [CpuType],586
+        cmp     [TestParams.CpuType],586
         jl      Do32bit
         shr     ecx,5
 loop1:
@@ -1341,7 +1339,7 @@ DWORD __stdcall ComparePseudoRandom(void * addr,
         mov     ecx,_size
         mov     edi,seed
         mov     ebx,poly
-        cmp     [CpuType],586
+        cmp     [TestParams.CpuType],586
         jl      Do32bit
         shr     ecx,5
 loop1:
@@ -2288,7 +2286,7 @@ void VerifyPageTable(void * pPhysStart, void * pPhysEnd,
 void __stdcall MemtestEntry()
 {
     DWORD flags;
-    DWORD seed = RandomSeed;
+    DWORD seed = TestParams.RandomSeed;
     DWORD row_size = 0x1000;
     while(1)
     {
@@ -2317,7 +2315,7 @@ void __stdcall MemtestEntry()
             MemoryRowSize = 0x10000;
         }
 
-        if (CpuType >= 486)
+        if (TestParams.CpuType >= 486)
         {
             if (row_size == 0x80000 || (flags & TEST_FLAGS_WRITETHRU))
             {
@@ -2347,9 +2345,9 @@ void __stdcall MemtestEntry()
             flags &= ~TEST_FLAGS_PREHEAT_MEMORY;
         }
 
-        if (SpecifiedRowSize != 0)
+        if (TestParams.RowSize != 0)
         {
-            MemoryRowSize = SpecifiedRowSize;
+            MemoryRowSize = TestParams.RowSize;
         }
 
         for (int DoDelay = 0; DoDelay < 2; DoDelay++)
@@ -2357,11 +2355,11 @@ void __stdcall MemtestEntry()
             TestDelay = 0;
             if (TestPass & 1)
             {
-                TestDelay = refresh_delay;
+                TestDelay = TestParams.ShortDelay;
             }
             if ((TestPass & 0x3E) == 0x3E)
             {
-                TestDelay = long_delay;
+                TestDelay = TestParams.LongDelay;
             }
 
             DoPreheatMemory(TestStartVirtAddr, MemoryToTestSize, 0x10000, flags);
@@ -2394,7 +2392,7 @@ void __stdcall MemtestEntry()
                                        MemoryToTestSize, flags | TEST_ALL0);
 #endif
 
-            if (TestPass == PassCount)
+            if (TestPass == TestParams.PassCount)
             {
                 StoreResultAndReboot(TEST_RESULT_SUCCESS);    // success
             }
@@ -2501,6 +2499,7 @@ void PrintMachinePerformance(MEMTEST_STARTUP_PARAMS * pTestParams)
 // InitMemtest returns address of new stack
 char * InitMemtest(MEMTEST_STARTUP_PARAMS * pTestParams)
 {
+    TestParams = * pTestParams;
     // pTestParams is a pointer to test parameters,
     // obtained by startup module from system configuration
     // and command line options.
@@ -2508,10 +2507,8 @@ char * InitMemtest(MEMTEST_STARTUP_PARAMS * pTestParams)
     // get current cursor position
     curr_row = pTestParams->CursorRow;
 
-    CpuType = pTestParams->CpuType;
-    RandomSeed = pTestParams->RandomSeed;
-    PassCount = pTestParams->PassCount;
-    if (PassCount != 0)
+
+    if (TestParams.PassCount != 0)
     {
         RebootOnFinish = TRUE;
     }
@@ -2548,10 +2545,6 @@ char * InitMemtest(MEMTEST_STARTUP_PARAMS * pTestParams)
     PageTableOffset = 0;    // physical address is the same as virtual
     // test the memory starting from 100000 (or lower address to test)
     // to the last address found (or higher address to test)
-    MEMTEST_STARTUP_PARAMS TestParams = * pTestParams;
-    refresh_delay = TestParams.ShortDelay;
-    long_delay = TestParams.LongDelay;
-    SpecifiedRowSize = TestParams.RowSize;
 
     DetectInstalledMemory( & TestParams);
 
@@ -2769,7 +2762,7 @@ extern "C" void _cdecl MemtestStartup(MEMTEST_STARTUP_PARAMS * pTestParams)
 
 inline void WriteBackAndInvalidate()
 {
-    if (CpuType >= 486)
+    if (TestParams.CpuType >= 486)
     {
         // Encode WBINVD manually.
         // MSVC 4.2 incorrectly emits WBINVD inctruction
@@ -3276,7 +3269,7 @@ void DetectInstalledMemory(MEMTEST_STARTUP_PARAMS * pTestParams)
     DWORD TargetPageFlags = GetPageFlags(check_addr);
 
     // set zero and target page attributes to non-cacheable
-    if (CpuType >= 486)
+    if (TestParams.CpuType >= 486)
     {
         ModifyPageFlags(0, 0x1000, PAGE_CACHE_DISABLE, 0);
         ModifyPageFlags(check_addr, 0x1000, PAGE_CACHE_DISABLE, 0);
@@ -3312,7 +3305,7 @@ void DetectInstalledMemory(MEMTEST_STARTUP_PARAMS * pTestParams)
     }
 
     pTestParams->MemoryTop = DWORD(pStart);
-    if (CpuType >= 486)
+    if (TestParams.CpuType >= 486)
     {
         if (0 == (ZeroPageFlags & PAGE_CACHE_DISABLE))
         {
