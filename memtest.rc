@@ -28,8 +28,8 @@ LANGUAGE LANG_NEUTRAL, SUBLANG_DEFAULT
 //
 
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION 1,0,5,0
- PRODUCTVERSION 1,0,5,0
+ FILEVERSION 2,0,0,0
+ PRODUCTVERSION 2,0,0,0
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
  FILEFLAGS 0x1L
@@ -47,12 +47,12 @@ BEGIN
             VALUE "Comments", "System memory test for Intel x86-compatible computers"
             VALUE "CompanyName", "AleGr SoftWare"
             VALUE "FileDescription", "System memory test for x86 computers"
-            VALUE "FileVersion", "1, 0, 5, 0"
+            VALUE "FileVersion", "2, 0, 0, 0"
             VALUE "InternalName", "memtest"
             VALUE "LegalCopyright", "Copyright © 1997-2002 Alexander Grigoriev"
             VALUE "OriginalFilename", "memtest.exe"
             VALUE "ProductName", "AleGr SoftWare memtest"
-            VALUE "ProductVersion", "1, 0, 5, 0"
+            VALUE "ProductVersion", "2, 0, 0, 0"
         END
     END
     BLOCK "VarFileInfo"
