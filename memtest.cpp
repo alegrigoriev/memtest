@@ -529,33 +529,6 @@ loop1:
     }
 }
 
-// fill memory area with the specified QWORD data
-// The function is called to write all zeros or ones.
-void __stdcall
-        FillMemoryPattern(void * addr, size_t _size,
-                          DWORD pattern)
-{
-    // size is 32 bytes multiply
-    __asm {
-        mov     ecx,_size
-        shr     ecx,5
-        mov     edx,addr
-        mov     eax,pattern
-loop1:
-        mov     [edx],eax
-        mov     [edx+4],eax
-        mov     [edx+8],eax
-        mov     [edx+4+8],eax
-        mov     [edx+16],eax
-        mov     [edx+4+16],eax
-        mov     [edx+24],eax
-        mov     [edx+4+24],eax
-        add     edx,32
-        dec     ecx
-        jg      loop1
-    }
-}
-
 void __stdcall
         FillMemoryPatternWriteAlloc(void * addr, size_t _size,
                                     DWORD pattern)
@@ -1456,15 +1429,7 @@ void WriteTestData(char * addr, size_t size,
                     PreloadCache(addr, curr_size);
                 }
 
-                if (flags & (TEST_ALL0 | TEST_ALL1))
-                {
-                    FillMemoryPattern(addr, curr_size, pattern1);
-                }
-                else
-                {
-                    FillMemoryPattern(addr, curr_size, pattern1,
-                                      pattern2);
-                }
+                FillMemoryPattern(addr, curr_size, pattern1, pattern2);
 
                 addr += curr_size;
                 row_size -= curr_size;
@@ -1822,14 +1787,18 @@ int CheckForKey()
     return  0;
 }
 
-void DoMemoryTestAlternatePattern(char * addr, size_t _size,
-                                  DWORD flags)
+void DoMemoryTestPattern(char * addr, size_t _size,
+                         DWORD const InitPattern1, DWORD const InitPattern2,
+                         DWORD flags)
 {
     if (addr == NULL || _size == 0)
     {
         return;
     }
-    for (int repeat = 16; repeat--;)
+    DWORD Pattern1 = InitPattern1;
+    DWORD Pattern2 = InitPattern2;
+
+    for (int loop = 0; loop < 32 && ContinueRunning; loop++)
     {
         DoPreheatMemory(addr, _size, 0x10000, flags);
         CheckForKey();
@@ -2461,7 +2430,7 @@ void PrintMachinePerformance(MEMTEST_STARTUP_PARAMS * pTestParams)
     DWORD wclock = DWORD(ReadTSC());
     for (i = 0; i < 10; i++)
     {
-        FillMemoryPattern((void*)0x800000, 0x20000, 0);
+        FillMemoryPattern((void*)0x800000, 0x20000, 0, 0);
     }
     wclock = DWORD(ReadTSC()) - wclock;
 
@@ -2489,7 +2458,7 @@ void PrintMachinePerformance(MEMTEST_STARTUP_PARAMS * pTestParams)
     wclock = DWORD(ReadTSC());
     for (i = 0; i < 10; i++)
     {
-        FillMemoryPattern((void*)0x800000, 0x400000, 0);
+        FillMemoryPattern((void*)0x800000, 0x400000, 0, 0);
     }
     wclock = DWORD(ReadTSC()) - wclock;
 
