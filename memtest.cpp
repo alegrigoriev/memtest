@@ -3073,15 +3073,15 @@ void RelocateProgram(void)
         }
         else
         {
-            if (DWORD(CurrentPhysProgramLocation) & 0x3FFFFF)
+            if (NULL == CurrentPhysProgramLocation)
             {
-                CurrentPhysProgramLocation = 0x00000000;
+                CurrentPhysProgramLocation = (void*)0x00800000;
             }
             CurrentPhysProgramLocation = 0x400000 + (char*)CurrentPhysProgramLocation;
             if (DWORD(CurrentPhysProgramLocation) >
                 DWORD(pMemoryToTestEnd) - 0x400000)
             {
-                CurrentPhysProgramLocation = (void*)0x400000;
+                CurrentPhysProgramLocation = (void*)0x00800000;
             }
         }
 
@@ -3092,7 +3092,7 @@ void RelocateProgram(void)
 #endif
         MapVirtualToPhysical((void*)0x800000, CurrentPhysProgramLocation,
                              MemoryInUseByProgram);
-        DWORD * pNewPageDirectory = PageTablePtr + 0x100000; // 4 MB up
+        DWORD * pNewPageDirectory = PageTablePtr + 0x100000; // 1M DWORDS=4 MB up
 
         // Init and copy page directory
         InitPageTable(pNewPageDirectory, PageTableSize);
