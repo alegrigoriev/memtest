@@ -1,6 +1,8 @@
 // memtest.cpp
 
 #include <windows.h>
+#include <process.h>
+#include <signal.h>
 
 #ifndef STANDALONE
 #include <stdio.h>
@@ -38,13 +40,37 @@ int TestDelay;
 
 BOOL RebootOnFinish;
 static DWORD dwRandSeed = 0xFFFFFFFF;
-size_t MemoryRowSize = 0;    // vary from 4K to 64K
+size_t MemoryRowSize = 0x10000;    // vary from 4K to 64K
+BOOL UnderWindows = FALSE;
+
+void __stdcall MemoryErrorStandalone(void * addr,
+                                     DWORD data_high, DWORD data_low,
+                                     DWORD ref_high, DWORD ref_low);
+void __stdcall MemoryErrorWin(void * addr,
+                              DWORD data_high, DWORD data_low,
+                              DWORD ref_high, DWORD ref_low);
+void (__stdcall * MemoryError)(void * addr,
+                               DWORD data_high, DWORD data_low, // read QWORD
+                               DWORD ref_high, DWORD ref_low) = MemoryErrorStandalone;
+
+void my_putsStandalone(const char * str, BOOL IsErrMsg = FALSE,
+                       unsigned __int16 color_mask = 0x0700);
+void my_putsWin(const char * str, BOOL IsErrMsg = FALSE,
+                unsigned __int16 color_mask = 0x0700);
+
+void (*my_puts)(const char * str, BOOL IsErrMsg = FALSE,
+                unsigned __int16 color_mask = 0x0700) = my_putsStandalone;
+
+void DelayStandalone(int nDelay);
+void DelayWin(int nDelay);
+void (*Delay)(int nDelay) = DelayStandalone;
 
 char * pMemoryToTestStart;
 char * pMemoryToTestEnd;
 DWORD TestFlags = TEST_PRELOAD_CACHE2 | TEST_PRELOAD_CACHE1
                   | TEST_EMPTY_CACHE | TEST_SEESAW | TEST_DELAY;
 int TestPass = 1;
+BOOL ContinueRunning = TRUE;
 char * const TestStartVirtAddr = (char*)0x800000;  // 8MB
 
 ////////////////////////////////////////////////////
@@ -100,10 +126,14 @@ int curr_row=24, curr_col=0; // current row and column on text mode display
 
 char title[] = MEMTEST_TITLE;
 
+char * LogFileName = NULL;
+BOOL bAppendLog = FALSE;
 /////////////////////////////////////////////////////////////
 // Function declarations
 
-void WriteBackAndInvalidate();
+void WriteBackAndInvalidateStandalone();
+void (*WriteBackAndInvalidate)() = WriteBackAndInvalidateStandalone;
+
 void DetectInstalledMemory(MEMTEST_STARTUP_PARAMS * pTestParams);
 BOOL TestPageForPresence(void * VirtAddr, BOOL FastDetect);
 DWORD GetPageFlags(void * VirtAddr);
@@ -121,7 +151,10 @@ void InitInterruptTable(GATE * Addr);
 void RelocateProgram(void);
 size_t MapMemoryToTest(void * ProgramRegion, size_t ProgramRegionSize,
                        void * PhysMemoryBottom, void * PhysMemoryTop);
-int CheckForKey();
+
+int CheckForKeyStandalone();
+int CheckForKeyWin() { return 0; }
+int (* CheckForKey)() = CheckForKeyStandalone;
 
 extern "C" {
     int __cdecl _inp(unsigned short);
@@ -230,10 +263,33 @@ label1:;
 #define FALSE 0
 #define ASSERT(x)
 
-void my_puts(const char * str, BOOL IsErrMsg = FALSE,
-             unsigned __int16 color_mask = 0x0700)
+CRITICAL_SECTION LogfileCriticalSection;
+HANDLE hLogFile;
+HANDLE hConsoleOut;
+
+void my_putsWin(const char * str, BOOL IsErrMsg,
+                unsigned __int16 color_mask)
 {
-#ifdef STANDALONE
+    size_t len = strlen(str);
+    EnterCriticalSection( &LogfileCriticalSection);
+
+    DWORD Written;
+    if (IsErrMsg && NULL != hLogFile)
+    {
+        WriteFile(hLogFile, str, len, & Written, NULL);
+    }
+
+    if (NULL != hConsoleOut)
+    {
+        WriteFile(hConsoleOut, str, len, & Written, NULL);
+    }
+
+    LeaveCriticalSection( &LogfileCriticalSection);
+}
+
+void my_putsStandalone(const char * str, BOOL IsErrMsg,
+                       unsigned __int16 color_mask)
+{
     static int error_row = 0;
     unsigned __int16 * position = &screenbase[curr_row][curr_col];
     unsigned char c;
@@ -299,9 +355,6 @@ void my_puts(const char * str, BOOL IsErrMsg = FALSE,
         position++;
         curr_col++;
     }
-#else
-    printf("%s", str);
-#endif
 }
 
 char * itox(char * buffer, DWORD n)
@@ -384,7 +437,7 @@ void StoreResultAndReboot(int result)
     Reboot();
 }
 
-void __stdcall MemoryError(void * addr,
+void __stdcall MemoryErrorStandalone(void * addr,
                            DWORD data_high, DWORD data_low, // read QWORD
                            DWORD ref_high, DWORD ref_low)  // reference QWORD
 {
@@ -1657,7 +1710,7 @@ void Delay10ms()
     } while (num2 <= num1);
 }
 
-void Delay(int nDelay)
+void DelayStandalone(int nDelay)
 {
     while(nDelay > 0)
     {
@@ -1682,7 +1735,7 @@ void Reboot()
     while(1) __asm hlt;
 }
 
-int CheckForKey()
+int CheckForKeyStandalone()
 {
     static int alt = 0;
     static int ctrl = 0;
@@ -1786,11 +1839,21 @@ void DoMemoryTestPattern(char * addr, size_t _size,
 
         // write test data to memory area
         // print current test
-        my_printf("\r                                      "
+        if (UnderWindows)
+        {
+            my_printf("pass %d Pattern: %X%X %X%X\r\n",
+                      TestPass,
+                      Pattern1, Pattern1,
+                      Pattern2, Pattern2);
+        }
+        else
+        {
+            my_printf("\r                                      "
                   "                                      \rPass %d,"
                   "Pattern: %X%X %X%X", TestPass,
                   Pattern1, Pattern1,
                   Pattern2, Pattern2);
+        }
 
         // write the pattern first time,
         // if two compare passes, compare it upward,
@@ -2257,8 +2320,7 @@ char * InitMemtest(MEMTEST_STARTUP_PARAMS * pTestParams)
         RebootOnFinish = TRUE;
     }
 
-    TestFlags |= pTestParams->Flags
-                 & (TEST_READ_TWICE | TEST_FLAGS_PATTERN | TEST_FLAGS_128BIT);
+    TestFlags |= pTestParams->Flags & TEST_READ_TWICE;
 
     if (pTestParams->Flags & TEST_FLAGS_NOPREFETCH)
     {
@@ -2478,21 +2540,9 @@ extern "C" void _cdecl MemtestStartup(MEMTEST_STARTUP_PARAMS * pTestParams)
     if (_ds & 3)
     {
         // running under Win32
-        HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
-        if (hConsole != INVALID_HANDLE_VALUE)
-        {
-            DWORD temp;
-            const char Msg[] = "This program can't be run under Windows or other "
-                               "Win32 environment.\n"
-                               "Run the program from bare DOS.\n"
-                               "\nTo start bare DOS session, restart the computer\n"
-                               "and press Shift-F5 when \"Starting Windows95...\" message appears,\n"
-                               "or boot from a diskette with system files only."
-            ;
-            WriteFile(hConsole, title, (sizeof title) -1, &temp, NULL);
-            WriteFile(hConsole, Msg, (sizeof Msg)-1, & temp, NULL);
-        }
-        ExitProcess(255);
+        extern "C" void _cdecl mainCRTStartup();
+        mainCRTStartup();
+        ExitProcess(0);
     }
 
     // DS privilege is Ring0. The program is running as a standalone module
@@ -2506,7 +2556,7 @@ extern "C" void _cdecl MemtestStartup(MEMTEST_STARTUP_PARAMS * pTestParams)
     while(1);
 }
 
-inline void WriteBackAndInvalidate()
+void WriteBackAndInvalidateStandalone()
 {
     if (TestParams.CpuType >= 486)
     {
@@ -2516,9 +2566,18 @@ inline void WriteBackAndInvalidate()
     }
 }
 
+void WriteBackAndInvalidateWin()
+{
+    // NO-OP
+}
+
     // convert physical to virtual
 void * GetPhysAddr(void * VirtAddr)
 {
+    if (UnderWindows)
+    {
+        return VirtAddr;
+    }
 #ifdef _DEBUG
     if (VirtAddr >= TopVirtualAddress)
     {
@@ -3107,16 +3166,16 @@ void InitGate(GATE & g, WORD Selector, void * Offset, WORD flags)
     g.flags = flags;
 }
 
-static char buf[256];
+static char PrintExceptionBuf[256];
 
 void __cdecl PrintException(const char * pFormat)
 {
     DWORD * pArgs = (DWORD*) & pFormat;
-    my_sprintf(buf, "\nEIP: %x, EFLAGS: %x, EAX: %x, EBX: %x, ECX: %x,\n"
+    my_sprintf(PrintExceptionBuf, "\nEIP: %x, EFLAGS: %x, EAX: %x, EBX: %x, ECX: %x,\n"
                "EDX: %x, ESI: %x, EDI: %x, EBP: %x\n",
                pArgs[8], pArgs[10], pArgs[1], pArgs[2], pArgs[3], pArgs[4],
                pArgs[5], pArgs[6], pArgs[7]);
-    my_puts(buf, FALSE, 0x0F00);
+    my_puts(PrintExceptionBuf, FALSE, 0x0F00);
     my_puts(pFormat, FALSE,0x8F00);
 }
 
@@ -3252,4 +3311,723 @@ void InitInterruptTable(GATE * pIDT)
     {
         InitGate(pIDT[i], i * 8, 0, GATE_INTERRUPT_GATE);   // non-present
     }
+}
+
+long MaxRunTime = 60; // minutes
+long MaxErrors = 0x100000;
+LONG ErrorsFound = 0;
+
+struct WinMemTestParams
+{
+    ULONG SizeToTest;
+    DWORD Flags;
+    DWORD Pattern1;
+    DWORD Pattern2;
+    int NumPasses;
+    BOOL bContinueRunning;
+};
+
+unsigned _stdcall MemoryTestThread(PVOID params)
+{
+    SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_BELOW_NORMAL);
+
+    WinMemTestParams * pParams = static_cast<WinMemTestParams *>(params);
+    PVOID AllocAddr = VirtualAlloc(NULL, pParams->SizeToTest, MEM_RESERVE, PAGE_READWRITE);
+    if (NULL == AllocAddr)
+    {
+        return -1;
+    }
+
+    for (int pass = 0; pass < pParams->NumPasses
+         && ContinueRunning
+         && pParams->bContinueRunning; pass++)
+    {
+        char * TestAddr = (char *) VirtualAlloc(AllocAddr,
+                                                pParams->SizeToTest, MEM_COMMIT, PAGE_READWRITE);
+        if (NULL == TestAddr)
+        {
+            break;
+        }
+
+        DoMemoryTestPattern(TestAddr, pParams->SizeToTest,
+                            pParams->Pattern1, pParams->Pattern2, pParams->Flags);
+
+        DoMemoryTestPattern(TestAddr, pParams->SizeToTest,
+                            pParams->Pattern2, pParams->Pattern1, pParams->Flags);
+
+        VirtualFree(AllocAddr, pParams->SizeToTest, MEM_DECOMMIT);
+
+        my_printf("Memory Test Thread: Pass %d of %d completed\r\n", pass + 1, pParams->NumPasses);
+    }
+
+    VirtualFree(AllocAddr, 0, MEM_RELEASE);
+    return 0;
+}
+
+struct WinIoTestParams
+{
+    ULONGLONG FileSizeToTest;
+    DWORD TestBufSize;
+    DWORD Flags;
+    DWORD Pattern1;
+    DWORD Pattern2;
+    int NumPasses;
+    BOOL bContinueRunning;
+    TCHAR TestDir[MAX_PATH];
+};
+
+BOOL WriteFileTestData(HANDLE hFile, void * WriteBuf,
+                       DWORD const WriteBufSize,
+                       ULONGLONG TestFileSize,
+                       DWORD pattern1, DWORD pattern2)
+{
+    LONG zero_pos = 0;
+    SetFilePointer(hFile, 0, & zero_pos, FILE_BEGIN);
+
+    for (ULONGLONG FilePos = 0; FilePos < TestFileSize && ContinueRunning; FilePos += WriteBufSize)
+    {
+        FillMemoryPattern(WriteBuf, WriteBufSize, pattern1,
+                          pattern2);
+
+        DWORD dwWritten;
+        BOOL Success = WriteFile(hFile, WriteBuf, WriteBufSize,
+                                 & dwWritten, NULL);
+        if (! Success)
+        {
+            return FALSE;
+        }
+        DWORD tmp = pattern1;
+        pattern1 = pattern2;
+        pattern2 = tmp;
+    }
+
+    return TRUE;
+}
+
+BOOL CompareFileTestData(HANDLE hFile, void * ReadBuf,
+                         DWORD const ReadBufSize,
+                         ULONGLONG TestFileSize,
+                         DWORD pattern1, DWORD pattern2)
+{
+
+    LONG zero_pos = 0;
+    SetFilePointer(hFile, 0, & zero_pos, FILE_BEGIN);
+
+    for (ULONGLONG FilePos = 0; FilePos < TestFileSize && ContinueRunning; FilePos += ReadBufSize)
+    {
+        DWORD dwRead;
+        BOOL Success = ReadFile(hFile, ReadBuf, ReadBufSize,
+                                & dwRead, NULL);
+        if (! Success)
+        {
+            return FALSE;
+        }
+
+        CompareMemoryPattern(ReadBuf, ReadBufSize, pattern1, pattern2);
+
+        DWORD tmp = pattern1;
+        pattern1 = pattern2;
+        pattern2 = tmp;
+    }
+
+    return TRUE;
+}
+
+void DoFileTestPattern(HANDLE hFile, void * WriteBuf,
+                       DWORD const WriteBufSize,
+                       ULONGLONG TestFileSize,
+                       DWORD const InitPattern1, DWORD const InitPattern2,
+                       DWORD flags)
+{
+    DWORD Pattern1 = InitPattern1;
+    DWORD Pattern2 = InitPattern2;
+
+    for (int loop = 0; loop < 16 && ContinueRunning; loop++)
+    {
+
+        // write test data to memory area
+        // print current test
+
+        my_printf("Pattern: %X%X %X%X\r\n",
+                  Pattern1, Pattern1,
+                  Pattern2, Pattern2);
+
+        // write the pattern first time,
+        // if two compare passes, compare it upward,
+        // then compare and rewrite with inverse pattern upward
+        // then if two compare passes, compare it downward
+        // then compare and rewrite with next pattern downward
+        //
+        if (! WriteFileTestData(hFile, WriteBuf, WriteBufSize, TestFileSize,
+                                Pattern1, Pattern2)
+            || ! CompareFileTestData(hFile, WriteBuf, WriteBufSize, TestFileSize,
+                                     Pattern1, Pattern2)
+            || ((flags & TEST_READ_TWICE)
+                && ! CompareFileTestData(hFile, WriteBuf, WriteBufSize, TestFileSize,
+                                         Pattern1, Pattern2)))
+        {
+            my_puts("Test File I/O Error\r\n");
+            break;
+        }
+
+        // rotate 16 bit words
+        Pattern1 = (_rotr(Pattern1, 1) & 0x7FFF7FFF)
+                   | (0x80008000 & (Pattern1 << 15));
+        Pattern2 = (_rotr(Pattern2, 1) & 0x7FFF7FFF)
+                   | (0x80008000 & (Pattern2 << 15));
+
+        // the pattern is rotated until it matches the initial
+        if (InitPattern1 == Pattern1
+            && InitPattern2 == Pattern2)
+        {
+            break;
+        }
+    }
+}
+
+unsigned _stdcall IoTestThread(PVOID params)
+{
+    WinIoTestParams * pParams = static_cast<WinIoTestParams *>(params);
+    // create a file
+    TCHAR TempPath[MAX_PATH] = { 0 };
+    if (0 == GetTempFileName(pParams->TestDir, "Tst", 0, TempPath))
+    {
+        my_puts("Unable to obtain a test file name\r\n", TRUE);
+        return -1;
+    }
+
+    HANDLE hFile = CreateFile(TempPath,
+                              GENERIC_READ | GENERIC_WRITE,
+                              0, NULL, CREATE_ALWAYS,
+                              FILE_ATTRIBUTE_NORMAL | FILE_FLAG_NO_BUFFERING,
+                              NULL);
+
+    if (INVALID_HANDLE_VALUE == hFile
+        || NULL == hFile)
+    {
+        my_puts("Unable to create a test file\r\n", TRUE);
+        return -1;
+    }
+
+    PVOID TestBuf = VirtualAlloc(NULL, pParams->TestBufSize, MEM_COMMIT, PAGE_READWRITE);
+
+    if (NULL != TestBuf)
+    {
+        for (int pass = 0; pass < pParams->NumPasses
+             && ContinueRunning
+             && pParams->bContinueRunning; pass++)
+        {
+            DoFileTestPattern(hFile, TestBuf, pParams->TestBufSize,
+                              pParams->FileSizeToTest,
+                              pParams->Pattern1, pParams->Pattern2, pParams->Flags);
+
+            DoFileTestPattern(hFile, TestBuf, pParams->TestBufSize,
+                              pParams->FileSizeToTest,
+                              pParams->Pattern2, pParams->Pattern1, pParams->Flags);
+
+            my_printf("I/O Test Thread: Pass %d of %d completed\r\n", pass + 1, pParams->NumPasses);
+        }
+        VirtualFree(TestBuf, 0, MEM_RELEASE);
+    }
+
+    CloseHandle(hFile);
+    DeleteFile(TempPath);
+    return 0;
+}
+
+void DelayWin(int nDelay)
+{
+    Sleep(nDelay);
+}
+
+void __stdcall MemoryErrorWin(void * addr,
+                              DWORD data_high, DWORD data_low, // read QWORD
+                              DWORD ref_high, DWORD ref_low)  // reference QWORD
+{
+    // message format:
+    // address = actual_data ref_data
+
+    my_printf("\r\nAddr: %x: written: %x%x, read: %x%x\r\n",
+              addr, ref_high, ref_low, data_high, data_low);
+
+    if (InterlockedIncrement( & ErrorsFound) >= MaxErrors)
+    {
+        ContinueRunning = FALSE;
+    }
+}
+
+DWORD TestMemoryPerThread = 64 * 0x100000;
+int const File1TestMB = 1024;
+int const File2TestMB = 512;
+int NumFileThreads = 0;
+int NumMemoryThreads = 2;
+int PatternIndex = 0;
+
+WinMemTestParams MemTestParams[] =
+{
+    {
+        64 * 0x100000,
+        0,
+        0x01234567, 0xFEDCBA98,
+        64, TRUE,
+    },
+
+    {
+        64 * 0x100000,
+        0,
+        0x7FFF7FFF, 0x80008000,
+        64, TRUE,
+    },
+
+    {
+        64 * 0x100000,
+        0,
+        0x7FFF7FFF, 0x80008000,
+        64, TRUE,
+    },
+
+    {
+        64 * 0x100000,
+        0,
+        0x7FFF7FFF, 0x80008000,
+        64, TRUE,
+    },
+};
+
+WinIoTestParams IoTestParams[] =
+{
+    {
+        File1TestMB * 0x100000,
+        4 * 0x100000,   // 4MB
+        TEST_READ_TWICE,
+        0x7FFF8000, 0x80007FFF,
+        10, TRUE,
+        "c:\\",
+    },
+    {
+        File2TestMB * 0x100000,
+        4 * 0x100000,   // 4MB
+        TEST_READ_TWICE,
+        0xFF7F0080, 0x0080FF7F,
+        10, TRUE,
+        "d:\\",
+    },
+};
+
+void __cdecl TerminateHandler(int sig)
+{
+    ContinueRunning = FALSE;
+}
+
+void __cdecl WindowsExitHandler(int sig)
+{
+    ContinueRunning = FALSE;
+    FreeConsole();
+}
+
+char const * IsOption(char const * arg, char const * option)
+{
+    // non-required characters in the option name are separated by '*'
+    BOOL Enough = FALSE;
+    BOOL WantParameter = FALSE;
+    while (*option != 0)
+    {
+        if ('*' == *option)
+        {
+            Enough = TRUE;
+            option++;
+            continue;
+        }
+
+        if (':' == *option)
+        {
+            Enough = TRUE;
+            WantParameter = TRUE;
+            option++;
+            continue;
+        }
+
+        if (0 != strnicmp(arg, option, 1))
+        {
+            break;
+        }
+
+        arg++;
+        option++;
+    }
+
+    if ((0 == *option || Enough)
+        && (0 == *arg || (WantParameter && ':' == *(arg++))))
+    {
+        return arg;
+    }
+    return NULL;
+}
+
+static char help[] = "Command line: MEMTEST [<size>] <options>\n"
+                        "<size>\t- size of memory to test per thread (in megabytes, default 64)\n"
+                        "Options are:\n"
+                        "/time:<minutes> - test run time in minutes (default=60);\n"
+                        "/maxerrors:<n> - max errors before the test stops;\n"
+                        "/logfile:<log file name> - file name to log the test run;\n"
+                        "/memory:<n> - test <n> megabytes of memory\n"
+                        "/file <test file dir> <size in MB> - add I/O test thread, test file location and size\n"
+                        "/pattern:xxxxxxxx:xxxxxxxx - use the specified test pattern (hex code) per thread;\n"
+
+                        "/row:<size> - memory chip row size;\n"
+                        "/delay <time1> <time2> - delays to test refresh quality in seconds;\n"
+                        "/readtwice - compare test data twice;\n"
+                        "/noprefetch - don't preload data to the cache;\n"
+                        "/preheat - perform memory preheat;\n"
+                        "/nocache - disable caching (not recommended);\n"
+                        "\nFor more details see README.HTM\n"
+                        "Check http://www.home.earthlink.net/~alegr/download/index.htm\n"
+                        " for program updates."
+;
+
+BOOL ProcessOptions(int argc, char * argv[ ])
+{
+    argc--;
+    argv++;
+    if (argc > 0 && '-' != argv[0][0] && '/' != argv[0][0])
+    {
+        char * end_ptr;
+        DWORD size = strtoul(argv[0], & end_ptr, 10);
+        if (*end_ptr != 0 || size < 4 || size > 1024)
+            return FALSE;
+        argv++;
+        argc --;
+
+        TestMemoryPerThread = size * 0x100000;
+    }
+    // process other options
+    while(argc > 0)
+    {
+        char const * option = argv[0];
+        if (option[0] != '/' && option[0] != '-')
+        {
+            return FALSE;
+        }
+
+        option ++;
+
+        char const * nextch;
+
+        if (NULL != (nextch = IsOption(option, "de:lay")))
+        {
+            char * last;
+            long delay1, delay2;
+            if (argc < 3
+                || (delay1 = strtol(argv[1], & last, 10)) < 0
+                || delay1 > 1000
+                || *last != 0
+                || (delay2 = strtol(argv[2], & last, 10)) < 0
+                || delay2 > 1000
+                || *last != 0)
+            {
+                return FALSE;
+            }
+
+            TestParams.ShortDelay = delay1 * 1000L;
+            TestParams.LongDelay = delay2 * 1000L;
+            argv += 2;
+            argc -= 2;
+        }
+        else if (NULL != (nextch = IsOption(option, "ro:w")))
+        {
+            char * last;
+            long row;
+            if (0 == *nextch)
+            {
+                if (argc < 2)
+                {
+                    return FALSE;
+                }
+                argv ++;
+                argc --;
+                nextch = argv[0];
+            }
+
+            row = strtol(nextch, & last, 10);
+            if ((row != 4 && row != 8 && row != 16 && row != 32 && row != 64)
+                || *last != 0)
+            {
+                return FALSE;
+            }
+            MemoryRowSize = row;
+        }
+        else if (IsOption(option, "noca*che"))
+        {
+            TestParams.Flags |= TEST_FLAGS_NOCACHE;
+        }
+        else if (IsOption(option, "pre*heat"))
+        {
+            TestParams.Flags |= TEST_FLAGS_PREHEAT_MEMORY;
+        }
+        else if (IsOption(option, "re*adtwice"))
+        {
+            TestParams.Flags |= TEST_READ_TWICE;
+        }
+        else if (IsOption(option, "nopr*efetch"))
+        {
+            TestParams.Flags |= TEST_FLAGS_NOPREFETCH;
+        }
+        else if (NULL != (nextch = IsOption(option, "pat:tern")))
+        {
+            char * last;
+            DWORD pattern1 = strtoul(nextch, & last, 16);
+
+            if (NULL != last && *last == ':')
+            {
+                DWORD pattern2 = strtoul(last+1, & last, 16);
+                if (NULL != last && *last == 0)
+                {
+                    if (NumFileThreads != 0)
+                    {
+                        IoTestParams[NumFileThreads - 1].Pattern1 = pattern1;
+                        IoTestParams[NumFileThreads - 1].Pattern2 = pattern2;
+                    }
+                    else
+                    {
+                        if (PatternIndex >= sizeof MemTestParams / sizeof MemTestParams[0])
+                        {
+                            return FALSE;
+                        }
+                        MemTestParams[PatternIndex].Pattern1 = pattern1;
+                        MemTestParams[PatternIndex].Pattern2 = pattern2;
+                        PatternIndex++;
+                    }
+                }
+            }
+        }
+        else if (NULL != (nextch = IsOption(option, "ti:me")))
+        {
+            char * last;
+
+            if (0 == *nextch)
+            {
+                if (argc < 2)
+                {
+                    return FALSE;
+                }
+                argv ++;
+                argc --;
+                nextch = argv[0];
+            }
+
+            MaxRunTime = (int)strtol(nextch, & last, 10);
+
+            if (*last != 0)
+            {
+                return FALSE;
+            }
+        }
+        else if (NULL != (nextch = IsOption(option, "memth:reads")))
+        {
+            char * last;
+
+            if (0 == *nextch)
+            {
+                if (argc < 2)
+                {
+                    return FALSE;
+                }
+                argv ++;
+                argc --;
+                nextch = argv[0];
+            }
+
+            NumMemoryThreads = (int)strtol(nextch, & last, 10);
+
+            if (*last != 0
+                || NumMemoryThreads > sizeof MemTestParams / sizeof MemTestParams[0])
+            {
+                return FALSE;
+            }
+        }
+        else if (IsOption(option, "io*thread"))
+        {
+            char * last;
+
+            if (NumFileThreads >= sizeof IoTestParams / sizeof IoTestParams[0])
+            {
+                return FALSE;
+            }
+
+            if (argc < 3)
+            {
+                return FALSE;
+            }
+
+            strncpy(IoTestParams[NumFileThreads].TestDir, argv[1], 259);
+
+            DWORD size = strtol(argv[2], & last, 10);
+            if (size > 64000)
+            {
+                return FALSE;
+            }
+
+            IoTestParams[NumFileThreads].FileSizeToTest = size * 0x100000i64;
+
+            NumFileThreads++;
+            argc -=2;
+            argv +=2;
+        }
+        else if (NULL != (nextch = IsOption(option, "maxe:rrors")))
+        {
+            char * last;
+
+            if (0 == *nextch)
+            {
+                if (argc < 2)
+                {
+                    return FALSE;
+                }
+                argv ++;
+                argc --;
+                nextch = argv[0];
+            }
+
+            MaxErrors = (int)strtol(nextch, & last, 10);
+
+            if (*last != 0)
+            {
+                return FALSE;
+            }
+        }
+        else if (NULL != (nextch = IsOption(option, "log:file")))
+        {
+            if (0 == *nextch)
+            {
+                if (argc < 2)
+                {
+                    return FALSE;
+                }
+                argv ++;
+                argc --;
+                nextch = argv[0];
+            }
+
+            if ('+' == nextch[0])
+            {
+                bAppendLog = TRUE;
+                nextch++;
+            }
+
+            LogFileName = nextch;
+
+        }
+        else
+        {
+            return FALSE;
+        }
+        argv++;
+        argc--;
+    }
+    return TRUE;
+}
+
+int _cdecl main(int argc, char * argv[ ])
+{
+    MemoryError = MemoryErrorWin;
+    my_puts = my_putsWin;
+    Delay = DelayWin;
+    CheckForKey = CheckForKeyWin;
+    UnderWindows = TRUE;
+
+    static char title[] = MEMTEST_TITLE;
+    InitializeCriticalSection( & LogfileCriticalSection);
+    hConsoleOut = GetStdHandle(STD_OUTPUT_HANDLE);
+
+    my_puts(title);
+    if (argc >= 2
+        && (strcmp(argv[1], "?") == 0
+            || strcmp(argv[1], "-?") == 0
+            || strcmp(argv[1], "/?") == 0
+            || stricmp(argv[1], "-h") == 0
+            || stricmp(argv[1], "/h") == 0))
+    {
+        my_puts(help);
+        return 1;
+    }
+
+    if ( ! ProcessOptions(argc, argv))
+    {
+        my_puts("Command line error\n");
+        return -1;
+    }
+
+    if (LogFileName != NULL
+        && LogFileName[0] != 0)
+    {
+        DWORD Flags = CREATE_ALWAYS;
+        if (bAppendLog)
+        {
+            Flags = OPEN_ALWAYS;
+        }
+        hLogFile = CreateFile(LogFileName, GENERIC_WRITE, 0, NULL,
+                              Flags, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_WRITE_THROUGH, NULL);
+
+        if (INVALID_HANDLE_VALUE == hLogFile)
+        {
+            hLogFile = NULL;
+        }
+        if (NULL != hLogFile
+            && bAppendLog)
+        {
+            SetFilePointer(hLogFile, 0, NULL, FILE_END);
+        }
+    }
+
+    my_puts(MEMTEST_TITLE);
+
+    HANDLE ThreadHandles[4];
+    int NumThreadHandles = 0;
+
+    unsigned ThreadId;
+    unsigned Handle;
+    int i;
+
+    signal(SIGABRT, TerminateHandler);
+    signal(SIGBREAK, TerminateHandler);
+    signal(SIGTERM, WindowsExitHandler);
+    signal(SIGINT, TerminateHandler);
+
+    for (i = 0; i < NumMemoryThreads; i++)
+    {
+        MemTestParams[i].SizeToTest = TestMemoryPerThread;
+
+        my_puts("Memory Test Thread started\r\n", TRUE);
+
+        Handle = _beginthreadex(NULL, 0x10000, MemoryTestThread, & MemTestParams[i],
+                                0, & ThreadId);
+
+        ThreadHandles[NumThreadHandles] = HANDLE(Handle);
+        NumThreadHandles++;
+    }
+
+    for (i = 0; i < NumFileThreads; i++)
+    {
+        my_puts("I/O Test Thread started\r\n", TRUE);
+
+        Handle = _beginthreadex(NULL, 0x10000, IoTestThread, & IoTestParams[i],
+                                0, & ThreadId);
+
+        ThreadHandles[NumThreadHandles] = HANDLE(Handle);
+        NumThreadHandles++;
+    }
+
+    WaitForMultipleObjects(NumThreadHandles, ThreadHandles, TRUE, MaxRunTime * 60000);
+    ContinueRunning = FALSE;
+    WaitForMultipleObjects(NumThreadHandles, ThreadHandles, TRUE, INFINITE);
+
+    if (0 != ErrorsFound)
+    {
+        my_printf("\r\n%d errors detected\r\n", ErrorsFound);
+    }
+
+    CloseHandle(hLogFile);
+    DeleteCriticalSection( & LogfileCriticalSection);
+
+    return 0;
 }
