@@ -2682,15 +2682,15 @@ char * InitMemtest(MEMTEST_STARTUP_PARAMS * pTestParams)
         RebootOnFinish = TRUE;
     }
 
-    if (pTestParams->Flags & TEST_READ_TWICE)
-    {
-        TestFlags |= TEST_READ_TWICE;
-    }
+    TestFlags |= pTestParams->Flags
+                 & (TEST_READ_TWICE | TEST_FLAGS_PATTERN | TEST_FLAGS_128BIT);
+
 #ifdef _DEBUG
     srand(pTestParams->RandomSeed);
 #endif
 
-    if (pTestParams->CpuFeatures & CPUID_4MB_PAGES)
+    if ((pTestParams->CpuFeatures & CPUID_4MB_PAGES)
+        && 0 == (pTestParams->Flags & TEST_FLAGS_NOLARGEPAGES))
     {
         f4MBPagesSupported = TRUE;
         // enable 4MB page size extension in CR4

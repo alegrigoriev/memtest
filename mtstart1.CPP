@@ -29,6 +29,7 @@ char help[] = "Command line: MEMTEST [<size> [<start>]] <options>\n"
               "/preheat - perform memory preheat;\n"
               "/nocache - disable caching (not recommended);\n"
               "/nocheck - don't enable machine check interrupt;\n"
+              "/nolargepages - don't use 4MB page mapping;\n"
               "/pattern:xxxxxxxx:xxxxxxxx - use the specified test pattern (hex code);\n"
               "/fastdetect - use fast memory size detection;\n"
               "/ignorexmm - start even if HIMEM.SYS is loaded\n"
@@ -430,6 +431,10 @@ BOOL ProcessCommandLine(int argc, char * * argv, MEMTEST_STARTUP_PARAMS * pParam
         {
             pParams->Flags |= TEST_FLAGS_IGNORE_XMM;
         }
+        else if (IsOption(option, "nola*rgepages"))
+        {
+            pParams->Flags |= TEST_FLAGS_NOLARGEPAGES;
+        }
         else if (NULL != (nextch = IsOption(option, "pat:tern")))
         {
             char * last;
@@ -495,7 +500,7 @@ int _cdecl main(int argc, char *argv[])
     PROTECTED_MODE_STARTUP_DATA Startup;
     memset( & Startup, 0, sizeof Startup);
 
-    Startup.msp.MemoryTop = 0x20000000;   // 512 MB
+    Startup.msp.MemoryTop = 0xC0000000;   // 3 GB
     Startup.msp.LongDelay = 60000;
     Startup.msp.ShortDelay = 1000;
     Startup.msp.RandomSeed = time(NULL);

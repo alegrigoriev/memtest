@@ -33,6 +33,7 @@
 #define TEST_FLAGS_FASTDETECT      0x00200000UL // use less thorough and faster detection
 #define TEST_FLAGS_PATTERN         0x00400000UL // use only specified 32-bit patterns
 #define TEST_FLAGS_IGNORE_XMM      0x01000000UL // Ignore XMM
+#define TEST_FLAGS_NOLARGEPAGES    0x02000000UL // Don't use 4MB pages
 
 // test results:
 #define TEST_RESULT_SUCCESS         0x60

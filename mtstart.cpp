@@ -283,13 +283,18 @@ Offset  Size    Description
     pAuxMemory->TSS._eflags = 2;
     pAuxMemory->TSS._eip = pStartup->ProgramEntry;
 
+    DWORD far * pStack = & pAuxMemory->StackTop;
+    *--pStack = 2;  // flags
+    *--pStack = 9*8;  // cs
+    *--pStack = pStartup->ProgramEntry;  // eip
+
     DWORD pdt_addr = GetFlatAddress( & pAuxMemory->TableDir);
     pAuxMemory->TSS._cr3 = pdt_addr;
     pAuxMemory->TSS.IOMapOffset = WORD(DWORD( & pAuxMemory->TSS.IOMap) - DWORD( & pAuxMemory->TSS));
 
     tmp_ptr = & pAuxMemory->GDT;
-    void far * pTaskJump = (void far *) ((10 * 8L) << 16);
 
+    DWORD esp_addr[2] = { pAuxMemory->TSS._esp - 12, pAuxMemory->TSS._ss };
     //void far * pDisplay = (void far *) ((11 * 8L) << 16);
     // flush file caches (unlikely that any exists,
     // since XMS should not be installed).
@@ -320,9 +325,25 @@ Offset  Size    Description
         _emit 66h _asm _emit 0B8h _asm _emit 1 _asm _emit 0 _asm _emit 0 _asm _emit 0x80
         // mov  cr0, eax
         __emit 0x0F __asm __emit 0x22 __asm __emit 0xC0
-        // Load TSS address
+
         // Jump to Task
-        jmp     dword ptr pTaskJump
+        // load flat DS, SS, ES, FS, GS
+        __emit 0x66 __asm __emit 0xB8 __asm __emit 0x40 __asm __emit 0x00 __asm __emit 0x00 __asm __emit 0x00 //mov    ax, 8*8
+        __emit 0x66 __asm mov    cx, WORD PTR esp_addr
+        __emit 0x66 __asm mov    sp, cx
+        mov     ss,ax
+        mov     ds,ax
+        mov     es,ax
+        //mov     gs,ax
+        __emit 0x66 _asm __emit 0x8E _asm __emit 0xE8
+        //mov     fs,ax
+        __emit 0x66 _asm __emit 0x8E _asm __emit 0xE0
+        // Load TSS address
+        //mov     eax,10 * 8
+        __emit 0x66 __asm __emit 0xB8 __asm __emit 0x50 __asm __emit 0x00 __asm __emit 0x00 __asm __emit 0x00 //mov    ax, 8*8
+        // LTR ax
+        __emit 0x0F _asm __emit 0x00 _asm __emit 0xD8
+        __emit 0x66 _asm iret
     }
 
 no_pmode:
