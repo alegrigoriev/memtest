@@ -521,7 +521,7 @@ loop1:
     }
 }
 
-void DoPreheatMemory(void * TestStartVirtAddr, size_t MemoryToTestSize, size_t step,
+void DoPreheatMemory(void * addr, size_t _size, size_t step,
                      DWORD flags)
 {
     if (0 == (flags & TEST_FLAGS_PREHEAT_MEMORY))
@@ -529,16 +529,16 @@ void DoPreheatMemory(void * TestStartVirtAddr, size_t MemoryToTestSize, size_t s
         return;
     }
     // save old page attributes
-    DWORD OldAttrs = GetPageFlags(TestStartVirtAddr);
+    DWORD OldAttrs = GetPageFlags(addr);
 
-    ModifyPageFlags(TestStartVirtAddr, MemoryToTestSize,
+    ModifyPageFlags(addr, _size,
                     PAGE_DIR_FLAG_NOCACHE, 0);
 
     WriteBackAndInvalidate();
 
-    PreheatMemory(TestStartVirtAddr, MemoryToTestSize, step);
+    PreheatMemory(addr, _size, step);
 
-    ModifyPageFlags(TestStartVirtAddr, MemoryToTestSize,
+    ModifyPageFlags(addr, _size,
                     OldAttrs & PAGE_DIR_FLAG_NOCACHE,
                     (~OldAttrs) & PAGE_DIR_FLAG_NOCACHE);
 }
@@ -1963,7 +1963,9 @@ void DoMemoryTestAlternatePattern(char * addr, size_t _size,
     }
     for (int repeat = 16; repeat--;)
     {
+        DoPreheatMemory(addr, _size, 0x10000, flags);
         CheckForKey();
+
         if(flags & TEST_EMPTY_CACHE)
         {
             WriteBackAndInvalidate();
@@ -2097,6 +2099,9 @@ void DoMemoryTestUniformPattern(char * addr, size_t _size,
         return;
     }
     CheckForKey();
+
+    DoPreheatMemory(addr, _size, 0x10000, flags);
+
     if(flags & TEST_EMPTY_CACHE)
     {
         WriteBackAndInvalidate();
@@ -2166,6 +2171,7 @@ void DoMemoryTestUniformPattern(char * addr, size_t _size,
 DWORD DoRandomMemoryTest(char * addr, size_t _size, DWORD seed,
                          DWORD polynom, DWORD flags)
 {
+    DoPreheatMemory(addr, _size, 0x10000, flags);
     CheckForKey();
     if(flags & TEST_EMPTY_CACHE)
     {
@@ -2382,32 +2388,25 @@ void __stdcall MemtestEntry()
                 TestDelay = TestParams.LongDelay;
             }
 
-            DoPreheatMemory(TestStartVirtAddr, MemoryToTestSize, 0x10000, flags);
             seed = DoRandomMemoryTest(TestStartVirtAddr, MemoryToTestSize,
                                       seed, 0x08080000, flags);
 
 #ifndef _DEBUG
-            DoPreheatMemory(TestStartVirtAddr, MemoryToTestSize, 0x10000, flags);
             DoMemoryTestAlternatePattern(TestStartVirtAddr,
                                          MemoryToTestSize, flags | TEST_RUNNING0);
 
-            DoPreheatMemory(TestStartVirtAddr, MemoryToTestSize, 0x10000, flags);
             DoMemoryTestAlternatePattern(TestStartVirtAddr,
                                          MemoryToTestSize, flags | TEST_RUNNING1);
 
-            DoPreheatMemory(TestStartVirtAddr, MemoryToTestSize, 0x10000, flags);
             DoMemoryTestUniformPattern(TestStartVirtAddr,
                                        MemoryToTestSize, flags | TEST_ALL1);
 
-            DoPreheatMemory(TestStartVirtAddr, MemoryToTestSize, 0x10000, flags);
             DoMemoryTestUniformPattern(TestStartVirtAddr,
                                        MemoryToTestSize, flags | TEST_ALL0);
 
-            DoPreheatMemory(TestStartVirtAddr, MemoryToTestSize, 0x10000, flags);
             DoMemoryTestUniformPattern(TestStartVirtAddr,
                                        MemoryToTestSize, flags | TEST_ALL1);
 
-            DoPreheatMemory(TestStartVirtAddr, MemoryToTestSize, 0x10000, flags);
             DoMemoryTestUniformPattern(TestStartVirtAddr,
                                        MemoryToTestSize, flags | TEST_ALL0);
 #endif
