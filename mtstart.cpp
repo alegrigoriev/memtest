@@ -193,6 +193,8 @@ void ProtectedModeStart(PROTECTED_MODE_STARTUP_DATA * pStartup)
     PROTECTED_MODE_STARTUP_MEMORY far * pAuxMemory =
         (PROTECTED_MODE_STARTUP_MEMORY far *)
         ( pTmp + (0xFFF & -long(GetFlatAddress(pTmp))));
+
+    pAuxMemory = (PROTECTED_MODE_STARTUP_MEMORY far *) NormalizeHugePointer(pAuxMemory);
     _fmemset( pAuxMemory, 0, sizeof *pAuxMemory);
 
     TRACE("Startup memory aligned address %Fp\n", pAuxMemory);
@@ -314,13 +316,13 @@ Offset  Size    Description
     *--pStack = 9*8;  // cs
     *--pStack = pStartup->ProgramEntry;  // eip
 
-    DWORD pdt_addr = GetFlatAddress( & pAuxMemory->TableDir);
+    static DWORD pdt_addr = GetFlatAddress( & pAuxMemory->TableDir);
     pAuxMemory->TSS._cr3 = pdt_addr;
     pAuxMemory->TSS.IOMapOffset = WORD(DWORD( & pAuxMemory->TSS.IOMap) - DWORD( & pAuxMemory->TSS));
 
     tmp_ptr = & pAuxMemory->GDT;
 
-    DWORD esp_addr[2] = { pAuxMemory->TSS._esp - 12, pAuxMemory->TSS._ss };
+    static DWORD esp_addr = pAuxMemory->TSS._esp - 12;
     TRACE("TSS._esp=%lX, pStack = %Fp, esp_addr=%lX, stack=%lX,%lX,%lX\n",
           pAuxMemory->TSS._esp, pStack, esp_addr, pStack[0], pStack[1], pStack[2]);
     //void far * pDisplay = (void far *) ((11 * 8L) << 16);
@@ -345,7 +347,17 @@ Offset  Size    Description
         les     si,tmp_ptr
         INT     15h
         pop     bp
-        jc      no_pmode
+        jnc      pmode
+    }
+    return;
+pmode:
+    __asm {
+        // disable interrupts
+        //mov  eax,0x00000002
+        _emit 66h _asm _emit 0B8h _asm _emit 2 _asm _emit 0 _asm _emit 0 _asm _emit 0
+        _emit 66h _asm push ax
+        _emit 66h _asm popf
+
         // enable paging
         __emit 0x66 __asm mov     ax,word ptr pdt_addr // mov eax, pdt_addr
         __emit 0x0F __asm __emit 0x22 __asm __emit 0xD8    // mov  cr3, eax
@@ -368,13 +380,11 @@ Offset  Size    Description
         __emit 0x66 _asm __emit 0x8E _asm __emit 0xE0
         // Load TSS address
         //mov     eax,10 * 8
-        __emit 0x66 __asm __emit 0xB8 __asm __emit 0x50 __asm __emit 0x00 __asm __emit 0x00 __asm __emit 0x00 //mov    ax, 8*8
+        __emit 0x66 __asm __emit 0xB8 __asm __emit 0x50 __asm __emit 0x00 __asm __emit 0x00 __asm __emit 0x00
         // LTR ax
         __emit 0x0F _asm __emit 0x00 _asm __emit 0xD8
         __emit 0x66 _asm iret
     }
 
-no_pmode:
-    return;
 }
 
