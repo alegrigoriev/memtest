@@ -139,7 +139,7 @@
 			parallel, each testing its own region of virtual addresses. It can also run 
 			disk read/write test, to check if disk DMA operations could cause the memory 
 			corruption.</P>
-		<P align="left">Disk I/O test was added because:
+		<P align="left">Disk I/O test&nbsp;has been added because:
 		</P>
 		<UL>
 			<LI>
@@ -151,13 +151,13 @@
 					requests from its own channels in case of contention.</DIV>
 			<LI>
 				<DIV align="left">a mainboard in my computer was suffering from memory corruption 
-					(some bits were unstable) during heavy disk I/O. The computer crashed, whenever 
-					I tried to copy about 10 GB of files. The problem never showed up in DOS-based 
-					MEMTEST run, but the new test could catch the error in a couple of minutes. 
-					DIMM and CPU replacement didn't help. A new board with the same chipset (though 
-					slightly different modification - without on-chip video controller), but from 
-					different OEM, works fine. I don't know&nbsp;whether it was the board layout 
-					problem, or some PCB traces had defects.
+					(some bits were unstable) during heavy disk I/O. The computer was crashing 
+					whenever I tried to copy about 10 GB of files. The problem never showed up in 
+					DOS-based MEMTEST run, but the new test could catch the error in a couple of 
+					minutes. DIMM and CPU replacement didn't help. A new board with the same 
+					chipset (though slightly different modification - without on-chip video 
+					controller), but from different OEM, works fine. I don't know&nbsp;whether it 
+					was the board layout problem, or some PCB traces had defects.
 				</DIV>
 			</LI>
 		</UL>
@@ -165,16 +165,19 @@
 		<P><FONT face="Times New Roman"><SAMP><STRONG>MEMTEST&nbsp;&lt;program switches&gt;</STRONG></SAMP></FONT></P>
 		<P>The following command line switches are recognized:</P>
 		<P>/<U>ti</U>me:&lt;time limit&gt; - sets test time in minutes;</P>
-		<P>/<U>mem</U>ory:&lt;n&gt; - specifies the test area size in megabytes, from 4 to 
-			1024. There can be up to 4 <STRONG>/memory</STRONG> command line switches. Each 
-			of them causes the program to start a test thread. /pattern option that goes 
-			after /memory specifies a test pattern for this thread.Max total allowed memory 
-			size is about 2000 MB. If you'd like to test bigger memory, you can start a 
-			couple of test sessions.</P>
-		<P>/<U>fi</U>le:&lt;directory&gt; &lt;n&gt; - specifies the test&nbsp;file location 
-			and&nbsp;size in megabytes (from 4 up to 64000). There can be up to 4 <STRONG>/file</STRONG>
-			command line switches. Each of them causes the program to start a test thread. 
-			/pattern option that goes after /file specifies a test pattern for this thread.</P>
+		<P>/<U>mem</U> ory:&lt;n&gt; - specifies the test area size in megabytes, from 4 to 
+			1024. Up to 4 <STRONG>/memory</STRONG> command line switches allowed, each of 
+			them causes the program to start a separate test thread. /pattern option that 
+			goes after /memory specifies a test pattern for this thread. Max total allowed 
+			memory size is about 2000 MB. If you&nbsp;need to test&nbsp;more memory, you 
+			can start more test sessions.</P>
+		<P>/<U>fi</U> le:&lt;directory&gt; &lt;n&gt; - specifies the test&nbsp;file 
+			location and&nbsp;size in megabytes (from 4 up to 64000).&nbsp;Up to 4 <STRONG>/file</STRONG>
+			command line switches allowed,&nbsp;each of them causes the program to start a 
+			separate test thread. /pattern option that goes after /file specifies a test 
+			pattern for this thread. If the directory name contains spaces, surround it 
+			with double quote characters. The directory should exist before the program is 
+			run.</P>
 		<P>/<U>maxe</U>rrors:&lt;n&gt; - maximum number of errors before the test stops. 
 			The test runs until time specified by /time switch elapses, or maximum number 
 			of errors found;</P>
@@ -189,11 +192,11 @@
 			character precedes the file name, test log will be appended to the file. The 
 			log&nbsp;file is always opened with write-through option, which prevents loss 
 			of the messages if the system crashes.</P>
-		<P>/<U>pat</U>tern:&lt;pattern1&gt;:&lt;pattern2&gt; - sets a pair of special 
-			32-bit patterns. &lt;pattern1&gt; and &lt;pattern2&gt; are specified in 
-			hexadecimal notation, for example: /pat:01234567:FEDCBA98. Each value is 
-			duplicated to form a 64-bit quad-word, so the memory will be written with the 
-			following data pattern:</P>
+		<P>/<U>pat</U>tern:&lt;pattern1&gt;:&lt;pattern2&gt; - sets a pair of 32-bit test 
+			patterns. &lt;pattern1&gt; and &lt;pattern2&gt; are specified in hexadecimal 
+			notation, for example: /pat:01234567:FEDCBA98. Each value is duplicated to form 
+			a 64-bit quad-word, so the memory will be written with the following data 
+			pattern:</P>
 		<P><FONT face="Courier New">01234567<FONT face="Courier New">01234567<BR>
 					FEDCBA98FEDCBA98<BR>
 					<FONT face="Courier New">01234567<FONT face="Courier New">01234567<BR>
@@ -207,17 +210,19 @@
 			&nbsp;&nbsp; /file:c:\ /pat:80007FFF:7FFF8000&nbsp; /file:d:\ 
 			/pat:0080FF7F:0080FF7F</P>
 		<P>For file test, it makes sense to use patterns which are inverted every 16 bits, 
-			like 80007FFF. It is because IDE data bus is 16 bits wide. For SCSI disc, the 
-			better test pattern may be different.</P>
+			like 80007FFF. It is because the IDE data bus is 16 bits wide. For SCSI 
+			disk,&nbsp;different test pattern may be better, for example inverted every 8 
+			bits for 8-bit SCSI bus.</P>
 		<P>It is recommended that different test threads use different test patterns.</P>
 		<P>To avoid disk thrashing, use one file test per physical drive. If you're running 
 			a RAID disk array, use one thread per controller channel, although the disks 
 			will experience continuous thrashing.</P>
 		<P>Check if you're specified not too much memory to test. Open Task Manager 
 			(Ctrl+Shift+Esc) and on the Performance tab see if the CPU is fully loaded. If 
-			it is not, then there is memory paging, and you need to reduce test area size.</P>
-		<P>The test can be stopped by pressing Ctrl+Break. It may not stop immediately, 
-			though.</P>
+			it is not, then there is memory paging (see also the hard drive light), and you 
+			need to reduce test area size.</P>
+		<P>The test can be stopped by pressing either Ctrl+Break or Ctrl+C. It may not stop 
+			immediately, though.</P>
 		<hr>
 		<p align="center"><font size="4">Memory test sequence</font></p>
 		<p align="left"><font size="3">First test performs pseudorandom data read/write. The 
@@ -255,8 +260,9 @@
 			memory cycle.</p>
 		<P>
 			Such tests are performed for all bit positions (total 16).</P>
-		<P>Next tests work with "all ones"/"all zeros" patterns, with pattern inverted on 
-			every other memory array row. This test idea is based on dynamic RAM structure.</P>
+		<P>
+			Next tests work with "all ones"/"all zeros" patterns, with pattern inverted on 
+			every other memory array row. This test exploits the dynamic RAM structure.</P>
 		<p>Dynamic RAM array is crossed by <strong>word</strong> (or row) lines (that go 
 			from row address decoder) and column lines. Each pair of column lines is 
 			connected to differential inputs of read detector. Even rows are connected to 
