@@ -3173,19 +3173,23 @@ size_t MapMemoryToTest(void * ProgramRegion, size_t ProgramRegionSize,
         // round the address to 4 MB boundary
         DWORD ProgramPage = DWORD(ProgramRegion) & ~0x3FFFFF;
         CurrPhysAddr = ProgramPage;
-        // don't map lowest memory here
-        if (00000 == CurrPhysAddr)
+        if (DWORD(PhysMemoryBottom) <= ProgramPage)
         {
-            CurrPhysAddr = 0x100000;
-        }
-        for (; CurrPhysAddr < ProgramPage + 0x400000; CurrPhysAddr += 0x100000)
-        {
-            if (CurrPhysAddr >= DWORD(ProgramRegion) + ProgramRegionSize
-                || CurrPhysAddr + 0x100000 <= DWORD(ProgramRegion))
+            // don't map lowest memory here
+            if (00000 == CurrPhysAddr)
             {
-                MapVirtualToPhysical(PVOID(CurrVirtAddr),
-                                     PVOID(CurrPhysAddr), 0x100000);
-                CurrVirtAddr += 0x100000;
+                CurrPhysAddr = 0x100000;
+            }
+            for (; CurrPhysAddr < ProgramPage + 0x400000; CurrPhysAddr += 0x100000)
+            {
+                if ((CurrPhysAddr >= DWORD(ProgramRegion) + ProgramRegionSize
+                        || CurrPhysAddr + 0x100000 <= DWORD(ProgramRegion))
+                    && CurrPhysAddr+0x100000 <= DWORD(PhysMemoryTop))
+                {
+                    MapVirtualToPhysical(PVOID(CurrVirtAddr),
+                                         PVOID(CurrPhysAddr), 0x100000);
+                    CurrVirtAddr += 0x100000;
+                }
             }
         }
     }
