@@ -1,187 +1,256 @@
 <!DOCTYPE HTML PUBLIC "-//IETF//DTD HTML//EN">
 <html>
-
-<head>
-<meta http-equiv="Content-Type" content="text/html; charset=windows-1251">
-<meta name="GENERATOR" content="Microsoft FrontPage 4.0">
-<title></title>
-</head>
-
-<body bgcolor="#FFFFFF">
-
-<p>AleGr MEMTEST is a program for testing DRAM (main memory) of PC-compatible computers
-built on Intel 386 or higher processor. The program is written with knowledge of system
-bus, cache and main memory of 80486, Pentium and Pentium Pro (Pentium II) processors.</p>
-
-<p>Maximum size of memory the program is able to test is 3 gigabytes.</p>
-
-<p>The program can be run only under &quot;bare&quot; DOS session, that is without any
-memory managers, such as HIMEM.SYS and EMM386.EXE. To start bare DOS session, restart the
-computer and press <font face="Times New Roman"><kbd>Shift+F5</kbd></font> when &quot;<strong>Starting
-Windows 95...</strong>&quot; message appears. For Windows 98 bare DOS session, press and
-hold <kbd>Ctrl</kbd> when OS boot begins (just after BIOS detected all disk drives).
-Windows 98 boot menu will appear. Press <font face="Times New Roman"><kbd>Shift+F5</kbd>
-to start DOS.</font></p>
-
-<p>Unlike older known memory testing programs which were written for cacheless processors,
-the test does not require to disable L1/L2 caches in BIOS setup. Test patterns used by the
-program are designed to test burst transfers between CPU and L2 cache and/or memory. Such
-transfers occur most of the time in real applications. If cache is disabled, burst
-transfers wouldn't be tested.</p>
-
-<p>Command line to start the program is as follows:</p>
-
-<p><font face="Times New Roman"><samp><strong>MEMTEST &lt;memory size&gt; &lt;base address
-of area to test&gt; /program options</strong></samp></font></p>
-
-<p>Optional <strong>memory size</strong> and <strong>base address </strong>of an area to
-test are specified in megabytes. If they are not specified, all available memory (but only
-up to 512 megabytes) will be tested. If your computer has more than 512 MB of memory, you
-have to specify its size. Since the program detects actual memory size, it is safe to
-specify more memory than actually installed.</p>
-
-<p>The program cannot test less than 8 megabytes.</p>
-
-<p>The following command line options are recognized:</p>
-
-<p>/row &lt;size&gt; - specifies size (in kilobytes) of DRAM memory array row. Allowed
-values are 4 up to 64 (only powers of 2). By default all possible row sizes from 4 to 64
-are tested. Specify this option only if you exactly know row size (it depends on memory
-chip manufacturer and model and is not usually published in memory data sheets). If
-specified size does not match real value, the program won't be able to test the memory
-chips for maximum noise on word lines.</p>
-
-<p>/delay &lt;time1&gt; &lt;time2&gt; - specifies the delay (in seconds) between memory
-write and read passes. The delay specified by <strong>time1</strong> is inserted on every
-other test pass, default value is 1 second. The delay specified by <strong>time2 </strong>is
-inserted on 62th and 63th passes of 64, default is 60 seconds. This allows to test for
-proper DRAM refresh.</p>
-
-<p>/speed - tells the program to measure CPU clock rate and also L2 cache and main memory
-read/write speed (including write in write-allocate mode);</p>
-
-<p>/readtwice - tells the program to compare test data twice;</p>
-
-<p>/writethru - disables writeback cache policy;</p>
-
-<p>/nocache - disables cache at all (not recommended).</p>
-
-<p>/nocheck - disables machine check on Pentium (and newer) systems. Machine check
-interrupt is triggered when bus or cache parity error occurs.</p>
-
-<p>/preheat - the program will try to preheat the memory chips by the special access
-sequence, before writing each test pattern. Remember, though, that using this
-option on some notebook computers may trigger overcurrent protection. </p>
-
-<p>/nousblegacy - disables USB legacy emulation interrupt. Use it when the test
-shows memory errors in the very first kilobyte of physical memory. </p>
-
-<p>/fastdetect - use fast memory size detection algorithm (though less
-thorough). </p>
-
-<p>It is not possible to return back to DOS once MEMTEST is started, since the program
-switches the CPU to 32-bit protected mode. Testing can be stopped only by system restart -
-either by pressing <font face="Times New Roman"><kbd>Ctrl+Alt+Del</kbd></font> or by
-pressing <font face="Times New Roman"><kbd>Reset</kbd></font> (it can be found on system
-case, not on keyboard), or by turning power off then off (recommended only for systems
-without <font face="Times New Roman"><kbd>Reset</kbd></font> button).</p>
-
-<p>When memory errors messages fill all the screen, the program pauses screen output to
-prevent error message loss. To resume the output, press <font face="Times New Roman"><kbd>Enter</kbd></font>.</p>
-
-<p>While working, the program prints test pass number. Full test consists of 64 passes.
-Required time depends on CPU and memory size. Keep in mind that every other test pass
-includes 36 seconds of delay and two passes of 64 both include 36 minutes of delay. After
-the program completed all 64 passes, it will continue to run the test from the beginning.</p>
-
-<hr>
-
-<p align="center"><font size="4">Test set</font></p>
-
-<p align="left"><font size="3">First test performs pseudorandom data read/write. The data
-consists of &quot;all ones&quot;/&quot;all zeros&quot; patterns produced by pseudorandom
-sequence generator. The test checks for address errors.</font></p>
-
-<p align="left"><font size="3">The second test uses &quot;running one&quot;/running
-zero&quot; patters. This test sequence allows also to check system bus in maximum noise
-conditions. The following test sequence is written:</font></p>
-
-<p align="left"><font face="Times New Roman"><code>0111111111111111 0111111111111111
-0111111111111111 0111111111111111<br>
-1000000000000000 1000000000000000 1000000000000000 1000000000000000<br>
-0111111111111111 0111111111111111 0111111111111111 0111111111111111<br>
-1000000000000000 1000000000000000 1000000000000000 1000000000000000</code></font></p>
-
-<p align="left">After all the memory being tested is filled with the pattern, it is read
-in ascenting direction and compared with reference data. As the memory is read, the data
-is replaced with inverse test pattern. After all the memory is read and replaced with
-inverted pattern, it is read in descenting direction and compared with new reference data.
-As the memory is read, the data is replaced with next test pattern, which is like first
-one shifted to right:</p>
-
-<p><font face="Times New Roman"><code>1011111111111111 1011111111111111 1011111111111111
-1011111111111111<br>
-0100000000000000 0100000000000000 0100000000000000 0100000000000000<br>
-1011111111111111 1011111111111111 1011111111111111 1011111111111111<br>
-0100000000000000 0100000000000000 0100000000000000 0100000000000000</code></font></p>
-
-<p>Such tests are performed for all bit positions (total 16). For testing 32-bit memory
-systems, used in 386 and 486 class systems, 32-bit test patterns are used.</p>
-
-<p>Next tests work with &quot;all ones&quot;/&quot;all zeros&quot; patterns, with pattern
-inverted on every other memory array row. The test is based on dynamic RAM structure.</p>
-
-<p>Dynamic RAM array is crossed by <strong>word</strong> (or row) lines (that go from row
-address decoder) and column lines. Each pair of column lines is connected to differential
-inputs of read detector. Even rows are connected to even column lines, and odd rows are
-connected to odd lines. Column lines are connected also to reference cells that are
-charged to half voltage of a regular cell. When, for instance, even row is selected,
-memory cells are read to even column lines and reference cells are read to odd column
-lines. Voltage difference (tens of millivolts) is detected by read detectors and converted
-to logical 0 or 1. Then read cells are charged back to full voltage (refreshed) and row is
-deselected. After that, all column lines should be discharged to fixed voltage level, it
-is called &quot;RAS precharge&quot;.</p>
-
-<p>Maximum noise to column lines occures when all cells are charged to same
-&quot;low&quot; or &quot;high&quot; state, this means that adjacent rows should be written
-with inverted data. To achieve this, test pattern is inverted every 4 to 64 KB (step is
-doubled on every test pass), and data is read from interlaced rows - 32 bytes from one
-row, 32 bytes from adjacent one. &quot;All zeros&quot; and &quot;all ones&quot; patterns
-allow also to induce maxium noise on adjacent column lines.</p>
-
-<p>After every test pass the program relocates itself in the physical memory, to test the
-area it just occupied.</p>
-
-<p>Every other pass includes 1 second delay between memory writing and reading. During the
-delay there are no accesses to the DRAM, because all instructions are fetched from the L1
-cache. This allows to check how reliable is memory refresh. On two passes from 64 the
-delay is increased to 60 seconds. These delays can be specified in the command line at the
-program start.</p>
-
-<p>To test transfers from L2 cache to the processor, some of test passes are performed
-with data prefetched from the memory to L2 cache. Without such prefetch, the data goes
-directly from memory to the processor. To test transfers from processor to L2 cache, some
-of the test passes are performed with data prefetched to L2 cache during test pattern
-write. This prevents&nbsp; the direct writes from CPU to RAM.</p>
-
-<p align="center">Changes history</p>
-
-<p align="left">1.04 (August 10, 2000). Fixed a bug in the test relocation,
-which caused it to reboot on machines with more than 960 MB of memory. Added /<b>nousblegacy</b>
-and /<b>fastdetect</b> command line options.</p>
-
-<p align="left">1.03 (March 28, 1999). Fixed a bug in timer function in V1.02, which was
-caused by compiler upgrade to MSVC 5.0. Added <strong>/preheat</strong> command line
-option.</p>
-
-<p align="left">1.02 (Feb 25, 1999). Fixed i386 and i486 processor detection. Fixed
-problem with Intel P-II motherboards, which caused the test to reboot a computer. Added <strong>/nocheck</strong>
-command line option to disable machine check interrupt on P5 and P6 processors.</p>
-
-<p>1.01 (Jan 22, 1998). Changed way to reset CPU for reboot. Instead of putting the CPU to
-shutdown mode (did not work on Pentium Pro+FX440) reset by keyboard controller is used.
-Added reset of floppy drives' motors before going to protected mode.</p>
-
-<p>1.0 (Dec 30, 1997). First released.</p>
-</body>
+	<head>
+		<title></title>
+		<meta http-equiv="Content-Type" content="text/html; charset=windows-1251">
+		<meta name="GENERATOR" content="Microsoft FrontPage 4.0">
+	</head>
+	<body bgcolor="#ffffff">
+		<p>
+			AleGr MEMTEST is a program for testing DRAM (main memory) of PC-compatible 
+			computers built on Intel 386 or higher processor.</p>
+		<P>Ancient memory testing programs were written for cacheless processors.&nbsp; 
+			This program is written with knowledge of system bus, cache and main memory of 
+			80486, Pentium and Pentium Pro (Pentium II) processors. Test patterns used by 
+			the program are designed to test burst transfers between CPU and L2 cache 
+			and/or memory. Such transfers occur most of the time in real applications.</P>
+		<P>Maximum size of memory the program is able to test is 3 gigabytes under DOS and 
+			less than 2 gigabytes under WIndows. If you have 4 GB or more, you can start 
+			several test sessions under Windows, to cover all the memory.</P>
+		<p>The program can be run under "bare" DOS session, and under Windows 98, Windows 
+			ME, Windows 2000, Windows XP. It may work under Windows NT, but has never been 
+			tested. The program runs differently under DOS and Windows.</p>
+		<H3 align="center">Licence terms</H3>
+		<P align="left">The program is free for personal (non-business) use. For business 
+			use, send email to <A href="mailto:alegr@earthlink.net">alegr@earthlink.net</A> 
+			for information about buing a licence.</P>
+		<P align="left">There is no guarantee of any kind. On some low-power systems, the 
+			program may cause excessive current consumption, and trigger overcurrent 
+			protection or cause possible damage. When run under Windows, it can cause an 
+			unstable system to crash with possible loss of data or OS damage.</P>
+		<H3 align="center">Running the program under "bare" DOS</H3>
+		<P>
+			"Bare" DOS means&nbsp;real mode DOS without any memory managers, such as 
+			HIMEM.SYS and EMM386.EXE. To start bare DOS session, restart the computer and 
+			press <font face="Times New Roman"><kbd>Shift+F5</kbd></font> when "<strong>Starting 
+				Windows 95...</strong>" message appears. For Windows 98 bare DOS session, 
+			press and hold <kbd>Ctrl</kbd> when OS boot begins (just after BIOS detected 
+			all disk drives). Windows 98 boot menu will appear. Press <font face="Times New Roman">
+				<kbd>Shift+F5</kbd> to start DOS. You can also boot from a floppy.</font></P>
+		<P>If you use Windows ME boot floppy, you will need to use <STRONG>/ignorexmm</STRONG>
+			(or <STRONG>/ig</STRONG>) command line option.</P>
+		<p>Command line to start the program is as follows:</p>
+		<p><font face="Times New Roman"><samp><strong>MEMTEST &lt;memory size&gt; &lt;base address of 
+						area to test&gt; /program switches</strong></samp></font></p>
+		<p>Optional <strong>memory size</strong> and <strong>base address </strong>of an 
+			area to test are specified in megabytes. If they are not specified, all 
+			available memory&nbsp;will be tested.&nbsp;Since the program detects actual 
+			memory size, it is safe to specify more memory than actually installed.</p>
+		<p>The program cannot test less than 8 megabytes.</p>
+		<p>
+			The following command line&nbsp;switches are recognized (they can be 
+			abbreviated down to the part shown with <U>underscore</U>):</p>
+		<p>/<U>ro</U> w:&lt;size&gt; - specifies size (in kilobytes) of DRAM memory array 
+			row. Allowed values are 4 up to 64 (only powers of 2). By default all possible 
+			row sizes from 4 to 64 are tested. Specify this option only if you exactly know 
+			row size (it depends on memory chip manufacturer and model and is not usually 
+			published in memory data sheets). If specified size does not match real value, 
+			the program won't be able to test the memory chips for maximum noise on word 
+			lines.</p>
+		<p>/<U>de</U>lay &lt;time1&gt; &lt;time2&gt; - specifies the delay (in seconds) 
+			between memory write and read passes. The delay specified by <strong>time1</strong>
+			is inserted on every other test pass, default value is 1 second. The delay 
+			specified by <strong>time2 </strong>is inserted on 62th and 63th passes of 64, 
+			default is 60 seconds. This allows to test for proper DRAM refresh.</p>
+		<p>/<U>sp</U>eed - tells the program to measure CPU clock rate and also L2 cache 
+			and main memory read/write speed (including write in write-allocate mode);</p>
+		<p>/<U>re</U>adtwice - tells the program to compare test data twice;</p>
+		<p>/<U>wr</U>itethru - disables writeback cache policy;</p>
+		<p>/<U>noca</U>che - disables cache at all (not recommended).</p>
+		<P>/<U>nopr</U>efetch - doesn't perform cache prefetch.</P>
+		<P>/<U>noch</U>eck - disables machine check on Pentium (and newer) systems. Machine 
+			check interrupt is triggered when bus or cache parity error occurs.</P>
+		<p>/<U>pre</U>heat - the program will try to preheat the memory chips by the 
+			special access sequence, before writing each test pattern. Remember, though, 
+			that using this option on some notebook computers may trigger overcurrent 
+			protection.
+		</p>
+		<p>/<U>nous</U>blegacy - disables USB legacy emulation interrupt. Use it when the 
+			test shows memory errors in the very first kilobyte of physical memory.
+		</p>
+		<p>/<U>fa</U>stdetect - use fast memory size detection algorithm (though less 
+			thorough).
+		</p>
+		<P>/<U>ig</U>norexmm - run the program even though XMM (HIMEM.SYS) is detected. Is 
+			necessary is you use Windows ME boot floppy.</P>
+		<P>/<U>nola</U>rgepages - do not use 4MB pages. Use regular 4KB pages only.</P>
+		<P>/<U>pat</U>tern:&lt;pattern1&gt;:&lt;pattern2&gt; - sets a pair of special 
+			32-bit patterns. &lt;pattern1&gt; and &lt;pattern2&gt; are specified in 
+			hexadecimal notation, for example: /pat:01234567:FEDCBA98. Each value is 
+			duplicated to form a 64-bit quad-word, so the memory will be written with the 
+			following data pattern:</P>
+		<P><FONT face="Courier New">01234567<FONT face="Courier New">01234567<BR>
+					FEDCBA98FEDCBA98<BR>
+					<FONT face="Courier New">01234567<FONT face="Courier New">01234567<BR>
+							FEDCBA98FEDCBA98</FONT></FONT></FONT></FONT></P>
+		<P>After testing the complete memory, the pattern is rotated, and it is repeated 
+			until the pattern returns to the original value.</P>
+		<P>Once MEMTEST is started, it is not possible to return back to DOS,&nbsp;because 
+			the program switches the CPU to 32-bit protected mode. Testing can be stopped 
+			only by system restart - either by pressing <font face="Times New Roman"><kbd>Ctrl+Alt+Del</kbd></font>
+			or by pressing <font face="Times New Roman"><kbd>Reset</kbd></font> (it can be 
+			found on system case, not on keyboard), or by turning power off then off 
+			(recommended only for systems without <font face="Times New Roman"><kbd>Reset</kbd></font>
+			button).</P>
+		<p>When memory errors messages fill all the screen, the program pauses screen 
+			output to prevent error message loss. To resume the output, press <font face="Times New Roman">
+				<kbd>Enter</kbd></font>.</p>
+		<p>While the program is working, it displays the test pass number. Full test 
+			consists of 64 passes. Required time depends on CPU and memory size. Keep in 
+			mind that every other test pass includes 36 seconds of delay and two passes of 
+			64 both include 36 minutes of delay. <STRONG>After the program completed all 64 
+				passes, it will continue to run the test from the beginning. To stop the test, 
+				you need to restart the computer, by pressing Ctrl+Alt+Del.</STRONG></p>
+		<H3 align="center">Running the program under Windows</H3>
+		<P align="left">This capability was added to provide more realistic testing of the 
+			overall system stability.
+		</P>
+		<P align="left">Under Windows, the program starts a few threads running in 
+			parallel, each testing its own region of virtual addresses. It can also run 
+			disk read/write test, to check if disk DMA operations could cause the memory 
+			corruption.</P>
+		<P align="left">Disk I/O test was added because:
+		</P>
+		<UL>
+			<LI>
+				<DIV align="left">
+					there are known IDE RAID controller chipsets&nbsp;that suffer from data 
+					corruption during&nbsp;simultaneous data transfer on both IDE channels;</DIV>
+			<LI>
+				<DIV align="left">a mainboard in my computer suffered from memory corruption (some 
+					bits were unstable) during heavy disk I/O. The computer crashed, whenever I 
+					tried to copy about 10 GB of files. The problem never showed up in DOS-based 
+					MEMTEST run, but the new test could catch the error in a couple of minutes. 
+					DIMM and CPU replacement didn't help. A new board with the same chipset, but 
+					from different manufacturer, works fine. I don't know&nbsp;whether it was the 
+					board layout problem, or some traces had cracks.
+				</DIV>
+			</LI>
+		</UL>
+		<P>Command line to start the program is as follows:</P>
+		<P><FONT face="Times New Roman"><SAMP><STRONG>MEMTEST&nbsp;&lt;program switches&gt;</STRONG></SAMP></FONT></P>
+		<P>The following command line switches are recognized:</P>
+		<P>/<U>ro</U>w &lt;size&gt; - specifies size (in kilobytes) of DRAM memory array 
+			row. Allowed values are 4 up to 64 (only powers of 2). By default all possible 
+			row sizes from 4 to 64 are tested. Specify this option only if you exactly know 
+			row size (it depends on memory chip manufacturer and model and is not usually 
+			published in memory data sheets). If specified size does not match real value, 
+			the program won't be able to test the memory chips for maximum noise on word 
+			lines.</P>
+		<P>/<U>de</U>lay &lt;time1&gt; &lt;time2&gt; - specifies the delay (in seconds) 
+			between memory write and read passes. The delay specified by <STRONG>time1</STRONG>
+			is inserted on every other test pass, default value is 1 second. The delay 
+			specified by <STRONG>time2 </STRONG>is inserted on 62th and 63th passes of 64, 
+			default is 60 seconds. This allows to test for proper DRAM refresh.</P>
+		<P>/<U>re</U>adtwice - tells the program to compare test data twice;</P>
+		<P>/<U>noca</U>che - disables cache at all (not recommended).</P>
+		<P>/<U>pre</U>heat - the program will try to preheat the memory chips by the 
+			special access sequence, before writing each test pattern. Remember, though, 
+			that using this option on some notebook computers may trigger overcurrent 
+			protection.
+		</P>
+		<P>/logfile</P>
+		<P>/<U>pat</U>tern:&lt;pattern1&gt;:&lt;pattern2&gt; - sets a pair of special 
+			32-bit patterns. &lt;pattern1&gt; and &lt;pattern2&gt; are specified in 
+			hexadecimal notation, for example: /pat:01234567:FEDCBA98. Each value is 
+			duplicated to form a 64-bit quad-word, so the memory will be written with the 
+			following data pattern:</P>
+		<P><FONT face="Courier New">01234567<FONT face="Courier New">01234567<BR>
+					FEDCBA98FEDCBA98<BR>
+					<FONT face="Courier New">01234567<FONT face="Courier New">01234567<BR>
+							FEDCBA98FEDCBA98</FONT></FONT></FONT></FONT></P>
+		<P>After testing the complete memory, the pattern is rotated, and it is repeated 
+			until the pattern returns to the original value.</P>
+		<hr>
+		<p align="center"><font size="4">Test set</font></p>
+		<p align="left"><font size="3">First test performs pseudorandom data read/write. The 
+				data consists of "all ones"/"all zeros" patterns produced by pseudorandom 
+				sequence generator. The test checks for address errors.</font></p>
+		<p align="left"><font size="3">The second test uses "running one"/running zero" 
+				patterns. This test sequence allows also to check the system bus in maximum 
+				noise conditions. The following test sequence is written:</font></p>
+		<p align="left"><font face="Times New Roman"><code>0111111111111111 0111111111111111 
+					0111111111111111 0111111111111111<br>
+					1000000000000000 1000000000000000 1000000000000000 1000000000000000<br>
+					0111111111111111 0111111111111111 0111111111111111 0111111111111111<br>
+					1000000000000000 1000000000000000 1000000000000000 1000000000000000</code></font></p>
+		<p align="left">After all the memory being tested is filled with the pattern, it is 
+			read in ascenting direction and compared with reference data. As the memory is 
+			read, the data is replaced with inverse test pattern. After all the memory is 
+			read and replaced with inverted pattern, it is read in descenting direction and 
+			compared with new reference data. As the memory is read, the data is replaced 
+			with next test pattern, which is like first one shifted to right:</p>
+		<p><font face="Times New Roman"><code>1011111111111111 1011111111111111 1011111111111111 
+					1011111111111111<br>
+					0100000000000000 0100000000000000 0100000000000000 0100000000000000<br>
+					1011111111111111 1011111111111111 1011111111111111 1011111111111111<br>
+					0100000000000000 0100000000000000 0100000000000000 0100000000000000</code></font></p>
+		<p>
+			Pattern replacement on the descenting pass is done with atomic 64-bit exchange 
+			operation: CMPEXCH8B</p>
+		<P>Such tests are performed for all bit positions (total 16). For testing 32-bit 
+			memory systems, used in 386 and 486 class systems, 32-bit test patterns are 
+			used.</P>
+		<p>Next tests work with "all ones"/"all zeros" patterns, with pattern inverted on 
+			every other memory array row. The test is based on dynamic RAM structure.</p>
+		<p>Dynamic RAM array is crossed by <strong>word</strong> (or row) lines (that go 
+			from row address decoder) and column lines. Each pair of column lines is 
+			connected to differential inputs of read detector. Even rows are connected to 
+			even column lines, and odd rows are connected to odd lines. Column lines are 
+			connected also to reference cells that are charged to half voltage of a regular 
+			cell. When, for instance, even row is selected, memory cells are read to even 
+			column lines and reference cells are read to odd column lines. Voltage 
+			difference (tens of millivolts) is detected by read detectors and converted to 
+			logical 0 or 1. Then read cells are charged back to full voltage (refreshed) 
+			and row is deselected. After that, all column lines should be discharged to 
+			fixed voltage level, it is called "RAS precharge".</p>
+		<p>Maximum noise to column lines occures when all cells are charged to same "low" 
+			or "high" state, this means that adjacent rows should be written with inverted 
+			data. To achieve this, test pattern is inverted every 4 to 64 KB (step is 
+			doubled on every test pass), and data is read from interlaced rows - 32 bytes 
+			from one row, 32 bytes from adjacent one. "All zeros" and "all ones" patterns 
+			allow also to induce maxium noise on adjacent column lines.</p>
+		<p>After every test pass the program relocates itself in the physical memory, to 
+			test the area it just occupied.</p>
+		<p>Every other pass includes 1 second delay between memory writing and reading. 
+			During the delay there are no accesses to the DRAM, because all instructions 
+			are fetched from the L1 cache. This allows to check how reliable is memory 
+			refresh. On two passes from 64 the delay is increased to 60 seconds. These 
+			delays can be specified in the command line at the program start.</p>
+		<p>To test transfers from L2 cache to the processor, some of test passes are 
+			performed with data prefetched from the memory to L2 cache. Without such 
+			prefetch, the data goes directly from memory to the processor. To test 
+			transfers from processor to L2 cache, some of the test passes are performed 
+			with data prefetched to L2 cache during test pattern write. This prevents&nbsp; 
+			the direct writes from CPU to RAM.</p>
+		<H3 align="center">Changes history</H3>
+		<p align="left">2.00 (June 2002). Fixed a bug in memory speed test. Added 
+			capability to work under Windows. Removed default memory size limit in 512 
+			megabytes.</p>
+		<P align="left">1.04 (August 10, 2000). Fixed a bug in the test relocation, which 
+			caused it to reboot on machines with more than 960 MB of memory. Added /<b>nousblegacy</b>
+			and /<b>fastdetect</b> command line options.</P>
+		<p align="left">1.03 (March 28, 1999). Fixed a bug in timer function in V1.02, 
+			which was caused by compiler upgrade to MSVC 5.0. Added <strong>/preheat</strong>
+			command line option.</p>
+		<p align="left">1.02 (Feb 25, 1999). Fixed i386 and i486 processor detection. Fixed 
+			problem with Intel P-II motherboards, which caused the test to reboot a 
+			computer. Added <strong>/nocheck</strong> command line option to disable 
+			machine check interrupt on P5 and P6 processors.</p>
+		<p>1.01 (Jan 22, 1998). Changed way to reset CPU for reboot. Instead of putting the 
+			CPU to shutdown mode (did not work on Pentium Pro+FX440) reset by keyboard 
+			controller is used. Added reset of floppy drives' motors before going to 
+			protected mode.</p>
+		<p>1.0 (Dec 30, 1997). First released.</p>
+	</body>
 </html>
