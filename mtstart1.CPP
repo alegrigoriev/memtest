@@ -31,7 +31,8 @@ char help[] = "Command line: MEMTEST [<size> [<start>]] <options>\n"
               "/nocheck - don't enable machine check interrupt.\n"
               "/fastdetect - use fast memory size detection.\n"
               "\nFor more details see README.HTM\n"
-              "Check http://www.aha.ru/~alegr/index_en.htm for program updates."
+              "Check http://www.home.earthlink.net/~alegr/download/index.htm\n"
+              " for program updates."
 ;
 
 extern "C" long cpu_type();
