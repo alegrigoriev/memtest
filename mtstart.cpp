@@ -91,13 +91,19 @@ BOOL LoadPE(char * pFilename, PROTECTED_MODE_STARTUP_DATA * pStartup)
     char huge * pModuleMemory = (char __huge *) _halloc(ModuleRequiredMemory, 1);
     if (NULL == pModuleMemory)
     {
+        TRACE("Unable to allocate module memory\n");
         fclose(pFile);
         return FALSE;
     }
 
     // align allocated memory to page boundary
+    TRACE("LoadPE: Allocated 0x%lX bytes, at %Fp, flat address %lX\n",
+          ModuleRequiredMemory, pModuleMemory, GetFlatAddress(pModuleMemory));
+
     pModuleMemory += 0xFFF & -(long)GetFlatAddress(pModuleMemory);
     pModuleMemory = (char huge *)NormalizeHugePointer(pModuleMemory);
+
+    TRACE("Page aligned address %Fp\n", pModuleMemory);
 
     // skip the optional header data directories
     fseek(pFile, PE_opt_header.NumberOfDataDirectories * 8, SEEK_CUR);
@@ -148,9 +154,15 @@ BOOL LoadPE(char * pFilename, PROTECTED_MODE_STARTUP_DATA * pStartup)
     pStartup->ProgramEntry = PE_opt_header.EntryPointRVA
                              + PE_opt_header.ImageBase;
 
-    TRACE("ImageBase=%lX, EP RVA=%lX, ProgramEntry=%lX\n",
+    TRACE("ImageBase=%lX, EP RVA=%lX, ProgramEntry=%lX, OP=%02X,%02X,%02X,%02X,%02X\n",
           PE_opt_header.ImageBase, PE_opt_header.EntryPointRVA,
-          pStartup->ProgramEntry);
+          pStartup->ProgramEntry,
+          0xFF & pModuleMemory[PE_opt_header.EntryPointRVA],
+          0xFF & pModuleMemory[PE_opt_header.EntryPointRVA+1],
+          0xFF & pModuleMemory[PE_opt_header.EntryPointRVA+2],
+          0xFF & pModuleMemory[PE_opt_header.EntryPointRVA+3],
+          0xFF & pModuleMemory[PE_opt_header.EntryPointRVA+4]
+          );
 
     pStartup->ProgramSize = PE_opt_header.ImageSize;
     pStartup->msp.ProgramTop = PE_opt_header.ImageBase
@@ -169,6 +181,7 @@ void ProtectedModeStart(PROTECTED_MODE_STARTUP_DATA * pStartup)
         return;   // unable to start
     }
 
+    TRACE("Startup memory address %Fp\n", pTmp);
     // disable USB legacy SMI interrupt
     if (pStartup->msp.SMIEAddr != NULL)
     {
@@ -182,6 +195,7 @@ void ProtectedModeStart(PROTECTED_MODE_STARTUP_DATA * pStartup)
         ( pTmp + (0xFFF & -long(GetFlatAddress(pTmp))));
     _fmemset( pAuxMemory, 0, sizeof *pAuxMemory);
 
+    TRACE("Startup memory aligned address %Fp\n", pAuxMemory);
     // Build starting page table.
     // The table consists of 3 pages - one is first level, two other -
     // second level for 8 MB space.
@@ -192,6 +206,9 @@ void ProtectedModeStart(PROTECTED_MODE_STARTUP_DATA * pStartup)
     pAuxMemory->TableDir[1] = GetFlatAddress(& pAuxMemory->PageDir1) |
                               (PAGE_DIR_FLAG_PRESENT | PAGE_DIR_FLAG_WRITABLE
                                   | PAGE_DIR_FLAG_ACCESSED);
+
+    TRACE("Page directory address=%Fp, TD[0]=%lX, TD[1]=%lX\n",
+          pAuxMemory->TableDir, pAuxMemory->TableDir[0], pAuxMemory->TableDir[1]);
     // fill PageDir0 to 1:1 mapping
     DWORD addr;
     for (addr = 0; addr < 0x400000LU; addr += 0x1000)
@@ -210,6 +227,7 @@ void ProtectedModeStart(PROTECTED_MODE_STARTUP_DATA * pStartup)
             = (addr + GetFlatAddress(pStartup->pProgramBase))
                 | (PAGE_DIR_FLAG_PRESENT | PAGE_DIR_FLAG_WRITABLE
                     | PAGE_DIR_FLAG_ACCESSED | PAGE_DIR_FLAG_DIRTY);
+        TRACE("Program map[%d]=%lX  ", int(addr / 0x1000u), pAuxMemory->PageDir1[addr / 0x1000u]);
     }
 
     // Create starting interrupt table
@@ -303,6 +321,8 @@ Offset  Size    Description
     tmp_ptr = & pAuxMemory->GDT;
 
     DWORD esp_addr[2] = { pAuxMemory->TSS._esp - 12, pAuxMemory->TSS._ss };
+    TRACE("TSS._esp=%lX, pStack = %Fp, esp_addr=%lX, stack=%lX,%lX,%lX\n",
+          pAuxMemory->TSS._esp, pStack, esp_addr, pStack[0], pStack[1], pStack[2]);
     //void far * pDisplay = (void far *) ((11 * 8L) << 16);
     // flush file caches (unlikely that any exists,
     // since XMS should not be installed).
