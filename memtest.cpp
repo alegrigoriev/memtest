@@ -403,20 +403,6 @@ void __stdcall MemoryError(void * addr,
     my_puts(buffer, TRUE, 0x0f00); // TRUE - it is error message
 }
 
-void __stdcall MemoryError32(void * addr,
-                             DWORD data, // read DWORD
-                             DWORD ref)  // reference DWORD
-{
-    // message format:
-    // address = actual_data ref_data
-    char buffer[80];
-    ASSERT(sizeof "\nAddr: 12345678: written: 01234567, read: 01234567\n"
-           < 79);
-    my_sprintf(buffer, "\nAddr: %x: written: %x, read: %x\n",
-               GetPhysAddr(addr), ref, data);
-    my_puts(buffer, TRUE, 0x0f00); // TRUE - it is error message
-}
-
 DWORD __stdcall WritePseudoRandom(void * addr,
                                   size_t _size, DWORD seed, DWORD poly)
 {
@@ -425,8 +411,6 @@ DWORD __stdcall WritePseudoRandom(void * addr,
         mov     ecx,_size
         mov     edi,seed
         mov     ebx,poly
-        cmp     [TestParams.CpuType],586
-        jl      Do32bit
         shr     ecx,5
 loop1:
         shr     edi,1
@@ -458,37 +442,8 @@ loop1:
         jg      loop1
 
         mov     seed,edi     // return last seed value
-        jmp     _ret
-Do32bit:
-        shr     ecx,4
-loop2:
-        shr     edi,1
-        sbb     eax,eax
-        mov     [esi],eax
-        and     eax,ebx
-        xor     edi,eax
-        shr     edi,1
-        sbb     eax,eax
-        mov     [esi+4],eax
-        and     eax,ebx
-        xor     edi,eax
-        shr     edi,1
-        sbb     eax,eax
-        mov     [esi+8],eax
-        and     eax,ebx
-        xor     edi,eax
-        shr     edi,1
-        sbb     eax,eax
-        mov     [esi+12],eax
-        and     eax,ebx
-        xor     edi,eax
-        add     esi,16
-        dec     ecx
-        jg      loop2
-
-        mov     seed,edi     // return last seed value
     }
-_ret:   return seed;
+    return seed;
 }
 
 // preload data to the cache
@@ -1351,8 +1306,6 @@ DWORD __stdcall ComparePseudoRandom(void * addr,
         mov     ecx,_size
         mov     edi,seed
         mov     ebx,poly
-        cmp     [TestParams.CpuType],586
-        jl      Do32bit
         shr     ecx,5
 loop1:
         shr     edi,1
@@ -1467,103 +1420,6 @@ error24:
         pop     edx
         pop     eax
         jmp     continue24
-
-Do32bit:
-        shr     ecx,4
-loop1a:
-        shr     edi,1
-        sbb     eax,eax
-        cmp     eax,[esi]
-        jnz     error0a
-continue0a:
-        and     eax,ebx
-        xor     edi,eax
-        shr     edi,1
-        sbb     eax,eax
-        cmp     eax,[esi+4]
-        jnz     error4a
-continue4a:
-        and     eax,ebx
-        xor     edi,eax
-        shr     edi,1
-        sbb     eax,eax
-        cmp     eax,[esi+8]
-        jnz     error8a
-continue8a:
-        and     eax,ebx
-        xor     edi,eax
-        shr     edi,1
-        sbb     eax,eax
-        cmp     eax,[esi+12]
-        jnz     error12a
-continue12a:
-        and     eax,ebx
-        xor     edi,eax
-        add     esi,16
-        dec     ecx
-        jg      loop1a
-
-        mov     seed,edi     // return last seed value
-    }
-
-    return seed;
-
-    __asm   {
-error0a:
-        push    eax
-        push    edx
-        push    ecx
-        push    eax // reference
-        mov     eax,[esi]
-        push    eax
-        push    esi
-        call    MemoryError32
-        pop     ecx
-        pop     edx
-        pop     eax
-        jmp     continue0a
-error4a:
-        push    eax
-        push    edx
-        push    ecx
-        push    eax // reference
-        mov     eax,[esi+4]  // read data
-        push    eax
-        lea     eax,[esi+4]
-        push    eax
-        call    MemoryError32
-        pop     ecx
-        pop     edx
-        pop     eax
-        jmp     continue4a
-error8a:
-        push    eax
-        push    edx
-        push    ecx
-        push    eax // reference
-        mov     eax,[esi+8]  // read data
-        push    eax
-        lea     eax,[esi+8]
-        push    eax
-        call    MemoryError32
-        pop     ecx
-        pop     edx
-        pop     eax
-        jmp     continue8a
-error12a:
-        push    eax
-        push    edx
-        push    ecx
-        push    eax // reference
-        mov     eax,[esi+12]  // read data
-        push    eax
-        lea     eax,[esi+12]
-        push    eax
-        call    MemoryError32
-        pop     ecx
-        pop     edx
-        pop     eax
-        jmp     continue12a
     }
 }
 
