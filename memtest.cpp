@@ -44,7 +44,9 @@ public:
         m_TestPass = 1;
         MemoryRowSize = 0x10000;
         m_TestDelay = 0;
+        m_ThreadNumber = 1;
     }
+    int m_ThreadNumber;
     DWORD dwRandSeed;
     int m_TestPass;
     size_t MemoryRowSize;    // vary from 4K to 64K
@@ -154,8 +156,7 @@ int (* CheckForKey)() = CheckForKeyStandalone;
 
 char * pMemoryToTestStart;
 char * pMemoryToTestEnd;
-DWORD TestFlags = TEST_PRELOAD_CACHE2 | TEST_PRELOAD_CACHE1
-                  | TEST_EMPTY_CACHE | TEST_SEESAW | TEST_DELAY;
+
 char * const TestStartVirtAddr = (char*)0x800000;  // 8MB
 
 class MemtestObject
@@ -165,7 +166,7 @@ public:
     ~MemtestObject();
     BOOL ProcessOptions(int argc, char * argv[ ]);
     void OpenLogFile();
-    void RunTests();
+    int RunTests();
     static void my_puts(const char * , BOOL IsErrMsg = FALSE,
                         unsigned __int16 color_mask = 0x0700);
     static void __stdcall MemoryError(void * addr,
@@ -523,31 +524,41 @@ void my_vsprintf(char * buffer, const char * format, void * vararg)
 {
     do
     {
-        char c = *format++;
+        char c = *format;
         if (c != '%')
         {
-            *buffer = c;
+            *buffer++ = c;
         }
         else
         {
-            switch (c = *format++)
+            format++;
+            switch (c = *format)
             {
             case 'x':
             case 'X':
-                buffer = itox(buffer, * (int *) vararg) - 1;
-                vararg = 1 + (int *) vararg;
+                buffer = itox(buffer, * (int *) vararg);
                 break;
+
+            case 's':
+            {
+                const char * s = * (const char * *) vararg;
+                int len = strlen(s);
+                memcpy(buffer, s, len);
+                buffer += len;
+            }
+                break;
+
             case 'D':
             case 'd':
-                buffer = itod(buffer, * (int *) vararg) - 1;
-                vararg = 1 + (int *) vararg;
+                buffer = itod(buffer, * (int *) vararg);
                 break;
             default:
-                *buffer = c;
-                break;
+                *buffer++ = c;
+                continue;   // don't advance vararg
             }
+            vararg = 1 + (int *) vararg;
         }
-    } while (*buffer++);
+    } while (*format++);
 }
 
 void my_printf(BOOL IsError, const char * format, ...)
@@ -685,19 +696,31 @@ void DoPreheatMemory(void * addr, size_t _size, size_t step,
     {
         return;
     }
-    // save old page attributes
-    DWORD OldAttrs = GetPageFlags(addr);
+    if (UnderWindows)
+    {
+        DWORD OldProtect;
+        VirtualProtect(addr, _size, PAGE_READWRITE | PAGE_NOCACHE, & OldProtect);
 
-    ModifyPageFlags(addr, _size,
-                    PAGE_DIR_FLAG_NOCACHE, 0);
+        PreheatMemory(addr, _size, step);
 
-    WriteBackAndInvalidate();
+        VirtualProtect(addr, _size, OldProtect, & OldProtect);
+    }
+    else
+    {
+        // save old page attributes
+        DWORD OldAttrs = GetPageFlags(addr);
 
-    PreheatMemory(addr, _size, step);
+        ModifyPageFlags(addr, _size,
+                        PAGE_DIR_FLAG_NOCACHE, 0);
 
-    ModifyPageFlags(addr, _size,
-                    OldAttrs & PAGE_DIR_FLAG_NOCACHE,
-                    (~OldAttrs) & PAGE_DIR_FLAG_NOCACHE);
+        WriteBackAndInvalidate();
+
+        PreheatMemory(addr, _size, step);
+
+        ModifyPageFlags(addr, _size,
+                        OldAttrs & PAGE_DIR_FLAG_NOCACHE,
+                        (~OldAttrs) & PAGE_DIR_FLAG_NOCACHE);
+    }
 }
 
 // preload data to the cache, jumping from one to another
@@ -1978,8 +2001,8 @@ void TestThread::DoMemoryTestPattern(char * addr, size_t _size,
         // print current test
         if (UnderWindows)
         {
-            my_printf(FALSE, "pass %d Pattern: %X%X %X%X\n",
-                      m_TestPass,
+            my_printf(FALSE, "Memory thread %d Pass %d Pattern: %X%X %X%X\n",
+                      m_ThreadNumber, m_TestPass,
                       Pattern1, Pattern1,
                       Pattern2, Pattern2);
         }
@@ -2115,9 +2138,17 @@ DWORD TestThread::DoRandomMemoryTest(char * addr, size_t _size, DWORD seed,
     }
     // write test data to memory area
     // print current test
-    my_printf(FALSE, "\r                                      "
+    if (UnderWindows)
+    {
+        my_printf(FALSE, "Memory thread %d Pass %d Pattern: random\n",
+                  m_ThreadNumber, m_TestPass);
+    }
+    else
+    {
+        my_printf(FALSE, "\r                                      "
               "                                      \rPass %d, "
               "Testing random pattern...", m_TestPass);
+    }
 
     if (addr == NULL || _size == 0)
     {
@@ -2266,7 +2297,7 @@ unsigned DOSTestThread::TestFunction()
 #endif
 
         // perform test with different read pattern and with refresh check delay
-        flags = TestFlags;
+        flags = m_Flags;
         MemoryRowSize = row_size;
         if (row_size > 0x10000)
         {
@@ -2460,7 +2491,7 @@ char * InitMemtest(MEMTEST_STARTUP_PARAMS * pTestParams)
 
     if (pTestParams->m_Flags & TEST_FLAGS_NOPREFETCH)
     {
-        TestFlags &= ~(TEST_PRELOAD_CACHE1 | TEST_PRELOAD_CACHE2);
+        TestParams.m_Flags &= ~(TEST_PRELOAD_CACHE1 | TEST_PRELOAD_CACHE2);
     }
 
 #ifdef _DEBUG
@@ -3507,7 +3538,8 @@ unsigned MemoryTestThread::TestFunction()
 
         VirtualFree(AllocAddr, m_SizeToTest, MEM_DECOMMIT);
 
-        my_printf(TRUE, "Memory Test Thread: Pass %d completed\n", m_TestPass);
+        my_printf(TRUE, "Memory Test Thread %d: Pass %d completed\n",
+                  m_ThreadNumber, m_TestPass);
     }
 
     VirtualFree(AllocAddr, 0, MEM_RELEASE);
@@ -3586,7 +3618,8 @@ void IoTestThread::DoFileTestPattern(void * WriteBuf,
         // write test data to memory area
         // print current test
 
-        my_printf(FALSE, "Pattern: %X%X %X%X\n",
+        my_printf(FALSE, "File   thread %d Pass %d Pattern: %X%X %X%X\n",
+                  m_ThreadNumber, m_TestPass,
                   Pattern1, Pattern1,
                   Pattern2, Pattern2);
 
@@ -3642,7 +3675,7 @@ unsigned IoTestThread::TestFunction()
     if (INVALID_HANDLE_VALUE == hFile
         || NULL == hFile)
     {
-        my_puts("Unable to create a test file\n", TRUE);
+        my_printf(TRUE, "Unable to create a test file %s\n", TempPath);
         return -1;
     }
     m_hFile = hFile;
@@ -3661,7 +3694,8 @@ unsigned IoTestThread::TestFunction()
                               FileSizeToTest,
                               m_Pattern2, m_Pattern1, m_Flags);
 
-            my_printf(TRUE, "I/O Test Thread: Pass %d completed\n", m_TestPass);
+            my_printf(TRUE, "I/O Test Thread %d: Pass %d completed\n",
+                      m_ThreadNumber, m_TestPass);
         }
         VirtualFree(TestBuf, 0, MEM_RELEASE);
     }
@@ -3775,19 +3809,22 @@ int MemtestObject::ProcessOptions(int argc, char * argv[ ])
             || stricmp(argv[1], "/h") == 0))
     {
         my_puts(help);
-        return 1;
+        return -1;
     }
 
     argc--;
     argv++;
 
+    int ArgIdx = 1;
+
+    int LastPatternThread = 0;
     // process other options
     while(argc > 0)
     {
         char const * option = argv[0];
         if (option[0] != '/' && option[0] != '-')
         {
-            return -1;
+            return ArgIdx;
         }
 
         option ++;
@@ -3827,15 +3864,23 @@ int MemtestObject::ProcessOptions(int argc, char * argv[ ])
                     }
                     else
                     {
-                        if (PatternIndex >= countof (MemThreads))
-                        {
-                            return -1;
-                        }
-                        MemThreads[PatternIndex].m_Pattern1 = pattern1;
-                        MemThreads[PatternIndex].m_Pattern2 = pattern2;
-                        PatternIndex++;
+                        IoThreads[LastPatternThread - countof (MemThreads)].m_Pattern1 = pattern1;
+                        IoThreads[LastPatternThread - countof (MemThreads)].m_Pattern2 = pattern2;
+                        LastPatternThread++;
+                    }
+                    else
+                    {
+                        return ArgIdx;
                     }
                 }
+                else
+                {
+                    return ArgIdx;
+                }
+            }
+            else
+            {
+                return ArgIdx;
             }
         }
         else if (NULL != (nextch = IsOption(option, "ti:me")))
@@ -3846,10 +3891,11 @@ int MemtestObject::ProcessOptions(int argc, char * argv[ ])
             {
                 if (argc < 2)
                 {
-                    return -1;
+                    return ArgIdx;
                 }
                 argv ++;
                 argc --;
+                ArgIdx++;
                 nextch = argv[0];
             }
 
@@ -3857,7 +3903,7 @@ int MemtestObject::ProcessOptions(int argc, char * argv[ ])
 
             if (*last != 0)
             {
-                return -1;
+                return ArgIdx;
             }
         }
         else if (NULL != (nextch = IsOption(option, "mem:ory")))
@@ -3866,17 +3912,18 @@ int MemtestObject::ProcessOptions(int argc, char * argv[ ])
 
             if (NumMemoryThreads >= countof(MemThreads))
             {
-                return -1;
+                return ArgIdx;
             }
 
             if (0 == *nextch)
             {
                 if (argc < 2)
                 {
-                    return -1;
+                    return ArgIdx;
                 }
                 argv ++;
                 argc --;
+                ArgIdx++;
                 nextch = argv[0];
             }
 
@@ -3885,7 +3932,7 @@ int MemtestObject::ProcessOptions(int argc, char * argv[ ])
                 || size > 1024
                 || size < 4)
             {
-                return -1;
+                return ArgIdx;
             }
 
             MemThreads[NumMemoryThreads].m_SizeToTest = size * MEGABYTE;
@@ -3898,36 +3945,38 @@ int MemtestObject::ProcessOptions(int argc, char * argv[ ])
 
             if (NumFileThreads >= countof(IoThreads))
             {
-                return -1;
+                return ArgIdx;
             }
             if (*nextch != 0)
             {
                 if (argc < 2)
                 {
-                    return -1;
+                    return ArgIdx;
                 }
             }
             else
             {
                 if (argc < 3)
                 {
-                    return -1;
+                    return ArgIdx;
                 }
                 nextch = argv[1];
                 argv++;
                 argc--;
+                ArgIdx++;
             }
 
 
             strncpy(IoThreads[NumFileThreads].TestDir, nextch,
                     sizeof IoThreads[NumFileThreads].TestDir);
 
+            ArgIdx++;
             DWORD size = strtol(argv[1], & last, 10);
             if (0 != *last
                 || size > 64000
                 || size < 4)
             {
-                return -1;
+                return ArgIdx;
             }
 
             IoThreads[NumFileThreads].FileSizeToTest = size * 0x100000i64;
@@ -3944,10 +3993,11 @@ int MemtestObject::ProcessOptions(int argc, char * argv[ ])
             {
                 if (argc < 2)
                 {
-                    return -1;
+                    return ArgIdx;
                 }
                 argv ++;
                 argc --;
+                ArgIdx++;
                 nextch = argv[0];
             }
 
@@ -3955,7 +4005,7 @@ int MemtestObject::ProcessOptions(int argc, char * argv[ ])
 
             if (*last != 0)
             {
-                return -1;
+                return ArgIdx;
             }
         }
         else if (NULL != (nextch = IsOption(option, "log:file")))
@@ -3964,10 +4014,11 @@ int MemtestObject::ProcessOptions(int argc, char * argv[ ])
             {
                 if (argc < 2)
                 {
-                    return -1;
+                    return ArgIdx;
                 }
                 argv ++;
                 argc --;
+                ArgIdx++;
                 nextch = argv[0];
             }
 
@@ -3982,10 +4033,11 @@ int MemtestObject::ProcessOptions(int argc, char * argv[ ])
         }
         else
         {
-            return -1;
+            return ArgIdx;
         }
         argv++;
         argc--;
+        ArgIdx++;
     }
     return 0;
 }
@@ -4005,9 +4057,12 @@ int _cdecl main(int argc, char * argv[ ])
     {
         if (-1 == Result)
         {
-            my_puts("Command line error\n");
+            return 1;
         }
-        return Result;
+
+        my_puts(title);
+        my_printf(FALSE, "Command line error in or after \"%s\"\n", argv[Result]);
+        return 2;
     }
 
     Memtest.OpenLogFile();
@@ -4017,9 +4072,8 @@ int _cdecl main(int argc, char * argv[ ])
     signal(SIGTERM, WindowsExitHandler);
     signal(SIGINT, TerminateHandler);
 
-    Memtest.RunTests();
+    return Memtest.RunTests();
 
-    return 0;
 }
 
 MemtestObject::MemtestObject()
@@ -4028,14 +4082,15 @@ MemtestObject::MemtestObject()
     hConsoleOut = GetStdHandle(STD_OUTPUT_HANDLE);
     NumFileThreads = 0;
     NumMemoryThreads = 0;
-    IoThreads[0].m_Pattern1 = 0x7FFF8000;
-    IoThreads[0].m_Pattern2 = ~0x7FFF8000;
-    IoThreads[1].m_Pattern1 = 0x7FFF8000;
-    IoThreads[1].m_Pattern2 = ~0x7FFF8000;
-    IoThreads[2].m_Pattern1 = 0x7FFF8000;
-    IoThreads[2].m_Pattern2 = ~0x7FFF8000;
-    IoThreads[3].m_Pattern1 = 0x7FFF8000;
-    IoThreads[3].m_Pattern2 = ~0x7FFF8000;
+    MaxRunTime = 60;
+    LogFileName = NULL;
+    bAppendLog = FALSE;
+
+    for (int i = 0; i < MaxIoThreads; i++)
+    {
+        IoThreads[i].m_Pattern1 = 0x7FFF8000;
+        IoThreads[i].m_Pattern2 = ~0x7FFF8000;
+    }
 }
 
 MemtestObject::~MemtestObject()
@@ -4072,9 +4127,9 @@ void MemtestObject::OpenLogFile()
     }
 }
 
-void MemtestObject::RunTests()
+int MemtestObject::RunTests()
 {
-    if (0 == NumMemoryThreads)
+    if (0 == NumMemoryThreads && 0 == NumFileThreads)
     {
         NumMemoryThreads = 2;
     }
@@ -4082,13 +4137,19 @@ void MemtestObject::RunTests()
     HANDLE ThreadHandles[MaxIoThreads + MaxMemThreads];
     int NumThreadHandles = 0;
 
+    DWORD TestStartTime = GetTickCount();
+
     unsigned ThreadId;
     unsigned Handle;
     int i;
     for (i = 0; i < NumMemoryThreads; i++)
     {
         MemThreads[i].m_Flags = TestParams.m_Flags;
-        my_puts("Memory Test Thread started\n", TRUE);
+        MemThreads[i].m_ThreadNumber = i + 1;
+
+        my_printf(TRUE, "Memory Test Thread %d started, memory size=%d MB, pattern=%X:%X\n",
+                  i + 1, MemThreads[i].m_SizeToTest / MEGABYTE,
+                  MemThreads[i].m_Pattern1, MemThreads[i].m_Pattern2);
 
         Handle = _beginthreadex(NULL, 0x10000, TestThreadFunction, & MemThreads[i],
                                 0, & ThreadId);
@@ -4100,7 +4161,13 @@ void MemtestObject::RunTests()
     for (i = 0; i < NumFileThreads; i++)
     {
         IoThreads[i].m_Flags = TestParams.m_Flags;
-        my_puts("I/O Test Thread started\n", TRUE);
+        IoThreads[i].m_ThreadNumber = i + 1;
+
+        my_printf(TRUE, "I/O Test Thread %d started, file location=\"%s\",\n"
+                  "                                file size=%d MB, pattern=%X:%X\n",
+                  i + 1, IoThreads[i].TestDir,
+                  ULONG(IoThreads[i].FileSizeToTest / MEGABYTE),
+                  IoThreads[i].m_Pattern1, IoThreads[i].m_Pattern2);
 
         Handle = _beginthreadex(NULL, 0x10000, TestThreadFunction, & IoThreads[i],
                                 0, & ThreadId);
@@ -4113,9 +4180,18 @@ void MemtestObject::RunTests()
     TestThread::m_bStopRunning = TRUE;
     WaitForMultipleObjects(NumThreadHandles, ThreadHandles, TRUE, INFINITE);
 
+    my_printf(TRUE, "Test completed, elapsed time=%d seconds\n",
+              (GetTickCount() - TestStartTime) / 1000);
+
     if (0 != m_NumErrorsFound)
     {
-        my_printf(TRUE, "\n%d errors detected\n\n", m_NumErrorsFound);
+        my_printf(TRUE, "\n %d errors detected\n\n", m_NumErrorsFound);
+        return 4;
+    }
+    else
+    {
+        my_puts("No errors detected\n\n", TRUE);
+        return 0;
     }
 
 }

@@ -447,7 +447,6 @@ BOOL ProcessCommandLine(int argc, char * * argv, MEMTEST_STARTUP_PARAMS * pParam
 
             if (NULL != last && *last == ':')
             {
-                pParams->m_Flags |= TEST_FLAGS_PATTERN;
                 pParams->m_Pattern2 = strtoul(last+1, & last, 16);
             }
         }
