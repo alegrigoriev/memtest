@@ -383,18 +383,42 @@ label1:;
 void MemtestObject::my_puts(const char * str, BOOL IsErrMsg,
                             unsigned __int16 color_mask)
 {
-    size_t len = strlen(str);
     EnterCriticalSection( &LogfileCriticalSection);
+
+    char buf[3096];
+
+    for (int i = 0; *str != 0 && i < (sizeof buf) - 1; i++, str++)
+    {
+        if ('\r' == *str)
+        {
+            // CR found
+            // if LF follows it, move both
+            if ('\n' == str[1])
+            {
+                buf[i] = *str;
+                i++;
+                str++;
+            }
+        }
+        else if ('\n' == *str)
+        {
+            // LF found. add CR in front
+            buf[i++] = '\r';
+        }
+        buf[i] = *str;
+    }
+
+    const size_t len = i;
 
     DWORD Written;
     if (IsErrMsg && NULL != hLogFile)
     {
-        WriteFile(hLogFile, str, len, & Written, NULL);
+        WriteFile(hLogFile, buf, len, & Written, NULL);
     }
 
     if (NULL != hConsoleOut)
     {
-        WriteFile(hConsoleOut, str, len, & Written, NULL);
+        WriteFile(hConsoleOut, buf, len, & Written, NULL);
     }
 
     LeaveCriticalSection( &LogfileCriticalSection);
@@ -526,11 +550,11 @@ void my_vsprintf(char * buffer, const char * format, void * vararg)
     } while (*buffer++);
 }
 
-void my_printf(const char * format, ...)
+void my_printf(BOOL IsError, const char * format, ...)
 {
     char buffer[1024];
     my_vsprintf(buffer, format, 1 + &format);
-    my_puts(buffer);
+    my_puts(buffer, IsError);
 }
 
 // only %x and %d formats are supported
@@ -1954,14 +1978,14 @@ void TestThread::DoMemoryTestPattern(char * addr, size_t _size,
         // print current test
         if (UnderWindows)
         {
-            my_printf("pass %d Pattern: %X%X %X%X\r\n",
+            my_printf(FALSE, "pass %d Pattern: %X%X %X%X\n",
                       m_TestPass,
                       Pattern1, Pattern1,
                       Pattern2, Pattern2);
         }
         else
         {
-            my_printf("\r                                      "
+            my_printf(FALSE, "\r                                      "
                   "                                      \rPass %d,"
                   "Pattern: %X%X %X%X", m_TestPass,
                   Pattern1, Pattern1,
@@ -1995,7 +2019,7 @@ void TestThread::DoMemoryTestPattern(char * addr, size_t _size,
             if (erraddr >= addr && erraddr < addr + _size)
             {
                 *erraddr ^= err;
-                my_printf("\nError introduced at %x, data = %x\r",
+                my_printf(TRUE, "\nError introduced at %x, data = %x\r",
                           GetPhysAddr(erraddr), err);
             }
         }
@@ -2045,7 +2069,7 @@ void TestThread::DoMemoryTestPattern(char * addr, size_t _size,
             if (erraddr >= addr && erraddr < addr + _size)
             {
                 *erraddr ^= err;
-                my_printf("\nError introduced at %x, data = %x\r",
+                my_printf(TRUE, "\nError introduced at %x, data = %x\r",
                           GetPhysAddr(erraddr), err);
             }
         }
@@ -2091,7 +2115,7 @@ DWORD TestThread::DoRandomMemoryTest(char * addr, size_t _size, DWORD seed,
     }
     // write test data to memory area
     // print current test
-    my_printf("\r                                      "
+    my_printf(FALSE, "\r                                      "
               "                                      \rPass %d, "
               "Testing random pattern...", m_TestPass);
 
@@ -2118,7 +2142,7 @@ DWORD TestThread::DoRandomMemoryTest(char * addr, size_t _size, DWORD seed,
         if (erraddr >= addr && erraddr < addr + _size)
         {
             *erraddr ^= err;
-            my_printf("\nError introduced at %x, data = %x\r",
+            my_printf(TRUE, "\nError introduced at %x, data = %x\r",
                       GetPhysAddr(erraddr), err);
         }
     }
@@ -2348,7 +2372,7 @@ void PrintMachinePerformance(MEMTEST_STARTUP_PARAMS * pTestParams)
     DWORD cpu_clock = DWORD(ReadTSC());
     Delay(100);
     cpu_clock = DWORD(ReadTSC()) - cpu_clock;
-    my_printf("CPU clock rate: %d MHz\n", (cpu_clock + 50000) / 100000);
+    my_printf(TRUE, "CPU clock rate: %d MHz\n", (cpu_clock + 50000) / 100000);
 
     // measure L2 cache read/write speed
     MapVirtualToPhysical((void*)0x800000, (void*)0x800000, 0x400000);
@@ -2381,7 +2405,7 @@ void PrintMachinePerformance(MEMTEST_STARTUP_PARAMS * pTestParams)
     }
     wpclock = DWORD(ReadTSC()) - wpclock;
 
-    my_printf("L2 Cache speed: read=%d MB/s, write=%d MB/s, "
+    my_printf(TRUE, "L2 Cache speed: read=%d MB/s, write=%d MB/s, "
               "write/allocate=%d MB/s\n",
               (25 * (cpu_clock / 2)) / rclock,
               (25 * (cpu_clock / 2)) / wclock,
@@ -2409,7 +2433,7 @@ void PrintMachinePerformance(MEMTEST_STARTUP_PARAMS * pTestParams)
     }
     wpclock = DWORD(ReadTSC()) - wpclock;
 
-    my_printf("Main memory speed: read=%d MB/s, write=%d MB/s, "
+    my_printf(TRUE, "Main memory speed: read=%d MB/s, write=%d MB/s, "
               "write/allocate=%d MB/s\n",
               (25 * (cpu_clock / 2)) / (rclock / 32),
               (25 * (cpu_clock / 2)) / (wclock / 32),
@@ -2484,7 +2508,7 @@ char * InitMemtest(MEMTEST_STARTUP_PARAMS * pTestParams)
     my_puts("To terminate test and restart the computer,\n"
             "press Ctrl+Alt+Del or RESET button, or turn power off then on\n", FALSE);
 
-    my_printf("Memory to test: %x to %x (%d megabytes)\n",
+    my_printf(TRUE, "Memory to test: %x to %x (%d megabytes)\n",
               TestParams.MemoryStart, TestParams.MemoryTop,
               (TestParams.MemoryTop - TestParams.MemoryStart) >> 20);
 
@@ -2560,7 +2584,7 @@ char * InitMemtest(MEMTEST_STARTUP_PARAMS * pTestParams)
     if (TestParams.m_Flags & TEST_FLAGS_PERFORMANCE)
 #endif
     {
-        my_printf("CPU class: %d, feature word: %x\n",
+        my_printf(TRUE, "CPU class: %d, feature word: %x\n",
                   TestParams.CpuType, TestParams.CpuFeatures);
     }
 
@@ -2996,7 +3020,7 @@ void RelocateProgram(void)
         }
 
 #ifdef _DEBUG
-        my_printf("\rRelocating the program to %X\n", CurrentPhysProgramLocation);
+        my_printf(FALSE, "\rRelocating the program to %X\n", CurrentPhysProgramLocation);
 #endif
         MapVirtualToPhysical((void*)0x800000, CurrentPhysProgramLocation,
                              MemoryInUseByProgram);
@@ -3209,7 +3233,7 @@ void DetectInstalledMemory(MEMTEST_STARTUP_PARAMS * pTestParams)
     {
         if ((DWORD(pStart) & 0xFFFFF) == 0)
         {
-            my_printf("Detecting physical memory, %dM\r", DWORD(pStart) >> 20);
+            my_printf(FALSE, "Detecting physical memory, %dM\r", DWORD(pStart) >> 20);
         }
         MapVirtualToPhysical(check_addr, pStart, 0x1000);
 
@@ -3483,7 +3507,7 @@ unsigned MemoryTestThread::TestFunction()
 
         VirtualFree(AllocAddr, m_SizeToTest, MEM_DECOMMIT);
 
-        my_printf("Memory Test Thread: Pass %d completed\r\n", m_TestPass);
+        my_printf(TRUE, "Memory Test Thread: Pass %d completed\n", m_TestPass);
     }
 
     VirtualFree(AllocAddr, 0, MEM_RELEASE);
@@ -3562,7 +3586,7 @@ void IoTestThread::DoFileTestPattern(void * WriteBuf,
         // write test data to memory area
         // print current test
 
-        my_printf("Pattern: %X%X %X%X\r\n",
+        my_printf(FALSE, "Pattern: %X%X %X%X\n",
                   Pattern1, Pattern1,
                   Pattern2, Pattern2);
 
@@ -3580,7 +3604,7 @@ void IoTestThread::DoFileTestPattern(void * WriteBuf,
                 && ! CompareFileTestData(WriteBuf, WriteBufSize, TestFileSize,
                                          Pattern1, Pattern2)))
         {
-            my_puts("Test File I/O Error\r\n");
+            my_puts("Test File I/O Error\n");
             break;
         }
 
@@ -3605,7 +3629,7 @@ unsigned IoTestThread::TestFunction()
     TCHAR TempPath[MAX_PATH] = {0};
     if (0 == GetTempFileName(TestDir, "Tst", 0, TempPath))
     {
-        my_puts("Unable to obtain a test file name\r\n", TRUE);
+        my_puts("Unable to obtain a test file name\n", TRUE);
         return -1;
     }
 
@@ -3618,7 +3642,7 @@ unsigned IoTestThread::TestFunction()
     if (INVALID_HANDLE_VALUE == hFile
         || NULL == hFile)
     {
-        my_puts("Unable to create a test file\r\n", TRUE);
+        my_puts("Unable to create a test file\n", TRUE);
         return -1;
     }
     m_hFile = hFile;
@@ -3637,7 +3661,7 @@ unsigned IoTestThread::TestFunction()
                               FileSizeToTest,
                               m_Pattern2, m_Pattern1, m_Flags);
 
-            my_printf("I/O Test Thread: Pass %d completed\r\n", m_TestPass);
+            my_printf(TRUE, "I/O Test Thread: Pass %d completed\n", m_TestPass);
         }
         VirtualFree(TestBuf, 0, MEM_RELEASE);
     }
@@ -3660,7 +3684,7 @@ void __stdcall MemtestObject::MemoryError(void * addr,
     // message format:
     // address = actual_data ref_data
 
-    my_printf("\r\nAddr: %x: written: %x%x, read: %x%x\r\n",
+    my_printf(TRUE, "\nAddr: %x: written: %x%x, read: %x%x\n",
               addr, ref_high, ref_low, data_high, data_low);
 
     if (InterlockedIncrement( & m_NumErrorsFound) >= MaxErrors)
@@ -4065,7 +4089,7 @@ void MemtestObject::RunTests()
     for (i = 0; i < NumMemoryThreads; i++)
     {
         MemThreads[i].m_Flags = TestParams.m_Flags;
-        my_puts("Memory Test Thread started\r\n", TRUE);
+        my_puts("Memory Test Thread started\n", TRUE);
 
         Handle = _beginthreadex(NULL, 0x10000, TestThreadFunction, & MemThreads[i],
                                 0, & ThreadId);
@@ -4077,7 +4101,7 @@ void MemtestObject::RunTests()
     for (i = 0; i < NumFileThreads; i++)
     {
         IoThreads[i].m_Flags = TestParams.m_Flags;
-        my_puts("I/O Test Thread started\r\n", TRUE);
+        my_puts("I/O Test Thread started\n", TRUE);
 
         Handle = _beginthreadex(NULL, 0x10000, TestThreadFunction, & IoThreads[i],
                                 0, & ThreadId);
@@ -4092,7 +4116,7 @@ void MemtestObject::RunTests()
 
     if (0 != m_NumErrorsFound)
     {
-        my_printf("\r\n%d errors detected\r\n", m_NumErrorsFound);
+        my_printf(TRUE, "\n%d errors detected\n\n", m_NumErrorsFound);
     }
 
 }
