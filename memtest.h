@@ -1,8 +1,8 @@
 // memtest.h
 
-#define MEMTEST_VERSION "1.04"
-#define MEMTEST_DATE    "Aug 14, 2000"
-#define MEMTEST_COPYRIGHT "Copyright 1997-2000 Alexander Grigoriev, alegr@earthlink.net"
+#define MEMTEST_VERSION "1.05"
+#define MEMTEST_DATE    "Jun 02, 2002"
+#define MEMTEST_COPYRIGHT "Copyright 1997-2002 Alexander Grigoriev, alegr@earthlink.net"
 #define MEMTEST_TITLE   "MEMTEST - PC memory test, Version " MEMTEST_VERSION \
             ", " MEMTEST_DATE \
             ". All Rights Reserved\n" \
