@@ -3743,23 +3743,22 @@ char const * IsOption(char const * arg, char const * option)
     return NULL;
 }
 
-static char const help[] = "Command line: MEMTEST [<size>] <options>\n"
-                            "<size>\t- size of memory to test per thread (in megabytes, default 64)\n"
+static char const help[] = "Command line: MEMTEST <options>\n"
                             "Options are:\n"
                             "/time:<minutes> - test run time in minutes (default=60);\n"
                             "/maxerrors:<n> - max errors before the test stops;\n"
-                            "/logfile:<log file name> - file name to log the test run;\n"
                             "/memory:<n> - test <n> megabytes of memory\n"
                             "/file:<test file dir> <size in MB> - add I/O test thread,\n"
                             "         use specified test file location and size\n"
                             "/pattern:xxxxxxxx:xxxxxxxx - use the specified hex test pattern;\n"
+                            "/logfile:<log file name> - file name to log the test run;\n"
 
                             "/readtwice - compare test data twice;\n"
                             "/noprefetch - don't preload data to the cache;\n"
                             "/preheat - perform memory preheat;\n"
                             "/nocache - disable caching (not recommended);\n"
                             "\nFor more details see README.HTM\n"
-                            "Check http://www.home.earthlink.net/~alegr/download/index.htm\n"
+                            "Check http://www.home.earthlink.net/~alegr/download/memtest.htm\n"
                             " for program updates."
 ;
 

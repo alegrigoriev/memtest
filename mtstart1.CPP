@@ -36,7 +36,7 @@ char help[] = "Command line: MEMTEST [<size> [<start>]] <options>\n"
               "/ignorexmm - start even if HIMEM.SYS is loaded\n"
               "        (if Windows ME recovery disk is booted).\n"
               "\nFor more details see README.HTM\n"
-              "Check http://www.home.earthlink.net/~alegr/download/index.htm\n"
+              "Check http://www.home.earthlink.net/~alegr/download/memtest.htm\n"
               " for program updates."
 ;
 
