@@ -2519,7 +2519,7 @@ char * InitMemtest(MEMTEST_STARTUP_PARAMS * pTestParams)
 
     TopUsedAddress = PageTableSize + (char*)pPageDirectory;
     MemoryInUseByProgram = DWORD(TopUsedAddress) - 0x400000;
-    CurrentPhysProgramLocation = (void*)0x100000;
+    CurrentPhysProgramLocation = NULL;
 
     InitPageTable(pPageDirectory, PageTableSize);
     TopVirtualAddress = (void *)((PageTableSize - 0x1000) * 0x400);
@@ -2984,7 +2984,7 @@ label2:
 void RelocateProgram(void)
 {
     // map an area where to copy code and data segments
-    if (DWORD(pMemoryToTestStart) < 0x400000)
+    if (DWORD(pMemoryToTestStart) < 0x400000 || NULL == CurrentPhysProgramLocation)
     {
         if (MemoryInUseByProgram < 0x100000)    // 1MB
         {
@@ -3048,7 +3048,12 @@ size_t MapMemoryToTest(void * ProgramRegion, size_t ProgramRegionSize,
     DWORD CurrVirtAddr = DWORD(TestStartVirtAddr);
     DWORD CurrPhysAddr = 0x400000;  // 4 MB
 
-    while(CurrPhysAddr + 0x400000 < DWORD(PhysMemoryTop))
+    if (CurrPhysAddr < DWORD(PhysMemoryBottom))
+    {
+        CurrPhysAddr = DWORD(PhysMemoryBottom);
+    }
+
+    while(CurrPhysAddr + 0x400000 <= DWORD(PhysMemoryTop))
     {
         if (CurrPhysAddr >= DWORD(ProgramRegion) + ProgramRegionSize
             || CurrPhysAddr + 0x400000 <= DWORD(ProgramRegion))
@@ -3061,6 +3066,7 @@ size_t MapMemoryToTest(void * ProgramRegion, size_t ProgramRegionSize,
     }
 
     // map incomplete top megabytes (if any)
+    // don't map if the program is above this address
     if(CurrPhysAddr < DWORD(PhysMemoryTop)
         && CurrPhysAddr >= DWORD(ProgramRegion) + ProgramRegionSize)
     {
