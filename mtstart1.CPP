@@ -29,6 +29,7 @@ char help[] = "Command line: MEMTEST [<size> [<start>]] <options>\n"
               "/preheat - perform memory preheat;\n"
               "/nocache - disable caching (not recommended);\n"
               "/nocheck - don't enable machine check interrupt.\n"
+              "/fastdetect - use fast memory size detection.\n"
               "\nFor more details see README.HTM\n"
               "Check http://www.aha.ru/~alegr/index_en.htm for program updates."
 ;
@@ -363,6 +364,10 @@ BOOL ProcessCommandLine(int argc, char * * argv, MEMTEST_STARTUP_PARAMS * pParam
         else if (0 == stricmp(option, "nocheck"))
         {
             pParams->Flags |= TEST_NO_MACHINE_CHECK;
+        }
+        else if (0 == stricmp(option, "fastdetect"))
+        {
+            pParams->Flags |= TEST_FLAGS_FASTDETECT;
         }
         else if (0 == stricmp(option, "nousblegacy"))
         {

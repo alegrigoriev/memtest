@@ -107,7 +107,7 @@ char title[] = MEMTEST_TITLE;
 
 void WriteBackAndInvalidate();
 void DetectInstalledMemory(MEMTEST_STARTUP_PARAMS * pTestParams);
-BOOL TestPageForPresence(void * VirtAddr);
+BOOL TestPageForPresence(void * VirtAddr, BOOL FastDetect);
 DWORD GetPageFlags(void * VirtAddr);
 void ModifyPageFlags(void * VirtAddr, size_t size, DWORD SetFlags,
                      DWORD ResetFlags = 0);
@@ -3208,7 +3208,7 @@ size_t MapMemoryToTest(void * ProgramRegion, size_t ProgramRegionSize,
 // This means it is readable and writable
 // and does not produce address overlap with 0-FFF page.
 
-BOOL TestPageForPresence(void * VirtAddr)
+BOOL TestPageForPresence(void * VirtAddr, BOOL FastDetect)
 {
     DWORD * const pZero = NULL;   // NULL now is a valid pointer!
     DWORD * const pPage = (DWORD *) VirtAddr;
@@ -3216,44 +3216,49 @@ BOOL TestPageForPresence(void * VirtAddr)
     DWORD checksum1 = 0;
     int i;
     // get zero page checksum
-    for (i = 0; i < 0x1000/4; i += 2)
+    int DwordCount = 0x1000 / 4;
+    if (FastDetect)
+    {
+        DwordCount = 0x100 / 4;
+    }
+    for (i = 0; i < DwordCount; i += 2)
     {
         checksum += pZero[i] + pZero[i+1];
     }
     // fill the page with 0xA5A5A5A5
-    for (i = 0; i < 0x1000/4; i+=2)
+    for (i = 0; i < DwordCount; i+=2)
     {
         pPage[i] = 0xA5A5A5A5;
         pPage[i+1] = 0xA5A5A5A5;
     }
     // check the page
-    for (i = 0; i < 0x1000/4; i+=2)
+    for (i = 0; i < DwordCount; i+=2)
     {
         if ((pPage[i] - 0xA5A5A5A5) | (pPage[i + 1] - 0xA5A5A5A5))
             return FALSE;
     }
     // check zero page
-    for (i = 0; i < 0x1000/4; i += 2)
+    for (i = 0; i < DwordCount; i += 2)
     {
         checksum1 += pZero[i] + pZero[i+1];
     }
     if (checksum1 != checksum)
         return FALSE;
     // fill the page with 0x5A5A5A5A
-    for (i = 0; i < 0x1000/4; i+=2)
+    for (i = 0; i < DwordCount; i+=2)
     {
         pPage[i] = 0x5A5A5A5A;
         pPage[i+1] = 0x5A5A5A5A;
     }
     // check the page
-    for (i = 0; i < 0x1000/4; i+=2)
+    for (i = 0; i < DwordCount; i+=2)
     {
         if ((pPage[i] - 0x5A5A5A5A) | (pPage[i + 1] - 0x5A5A5A5A))
             return FALSE;
     }
     // check zero page
     checksum1 = 0;
-    for (i = 0; i < 0x1000/4; i +=2)
+    for (i = 0; i < DwordCount; i +=2)
     {
         checksum1 += pZero[i] + pZero[i+1];
     }
@@ -3302,7 +3307,7 @@ void DetectInstalledMemory(MEMTEST_STARTUP_PARAMS * pTestParams)
         }
         MapVirtualToPhysical(check_addr, pStart, 0x1000);
 
-        if (! TestPageForPresence(check_addr))
+        if (! TestPageForPresence(check_addr, pTestParams->Flags & TEST_FLAGS_FASTDETECT))
             break;
     }
 

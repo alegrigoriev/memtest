@@ -30,6 +30,7 @@
 #define TEST_FLAGS_PREHEAT_MEMORY  0x00040000UL  // preheat memory chips
                                     // by placing big load on them
 #define TEST_NO_USB_LEGACY         0x00080000UL
+#define TEST_FLAGS_FASTDETECT      0x00200000UL // use less thorough and faster detection
 
 // test results:
 #define TEST_RESULT_SUCCESS         0x60
