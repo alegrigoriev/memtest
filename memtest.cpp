@@ -1156,44 +1156,40 @@ void __stdcall
 {
     __asm {
         mov     esi,addr
-        mov     ecx,_size
-        add     esi,ecx    // calculate high address
-        shr     ecx,5
-        mov     eax,data0
-        mov     edx,data1
-        mov     ebx,new_data0
-        mov     edi,new_data1
+        mov     edi,_size
+        add     esi,edi    // calculate high address
+        shr     edi,5
 loop1:
+        mov     eax,data1
+        mov     ebx,new_data1
         sub     esi,32
-        cmp     eax,[esi]
-        jnz     error0
-        cmp     eax,[esi+4]
-        jnz     error0
-continue0:
-        mov     [esi],ebx
-        mov     [esi+4],ebx
-        cmp     edx,[esi+8]
-        jnz     error8
-        cmp     edx,[esi+4+8]
-        jnz     error8
-continue8:
-        mov     [esi+8],edi
-        mov     [esi+4+8],edi
-        cmp     eax,[esi+16]
-        jnz     error16
-        cmp     eax,[esi+4+16]
-        jnz     error16
-continue16:
-        mov     [esi+16],ebx
-        mov     [esi+4+16],ebx
-        cmp     edx,[esi+24]
-        jnz     error24
-        cmp     edx,[esi+4+24]
+        mov     edx,eax
+        mov     ecx,ebx
+        lock cmpxchg8b [esi+24]
         jnz     error24
 continue24:
-        mov     [esi+24],edi
-        mov     [esi+4+24],edi
-        dec     ecx
+        mov     eax,data0
+        mov     ebx,new_data0
+        mov     edx,eax
+        mov     ecx,ebx
+        cmpxchg8b [esi+16]
+        jnz     error16
+continue16:
+        mov     eax,data1
+        mov     ebx,new_data1
+        mov     edx,eax
+        mov     ecx,ebx
+        cmpxchg8b [esi+8]
+        jnz     error8
+continue8:
+        mov     eax,data0
+        mov     ebx,new_data0
+        mov     edx,eax
+        mov     ecx,ebx
+        lock cmpxchg8b [esi]
+        jnz     error0
+continue0:
+        dec     edi
         jnz     loop1
     }
 
@@ -1202,73 +1198,53 @@ continue24:
     _asm {
 
 error0:
-        push    eax
-        push    edx
+        mov     [esi],ecx
+        mov     [esi+4],ebx
+        mov     ecx,data0
+        push    ecx // reference
         push    ecx
-        push    eax // reference
-        push    eax
-        mov     eax,[esi]  // read data
-        push    eax
-        mov     eax,[esi+4]
+        push    edx // read data
         push    eax
         push    esi
         call    MemoryError
-        pop     ecx
-        pop     edx
-        pop     eax
         jmp     continue0
 error8:
-        push    eax
-        push    edx
+        mov     [esi+8],ecx
+        mov     [esi+8+4],ebx
+        mov     ecx,data1
+        push    ecx // reference
         push    ecx
-        push    edx // reference
-        push    edx
-        mov     eax,[esi+8]  // read data
-        push    eax
-        mov     eax,[esi+8+4]
+        push    edx // read data
         push    eax
         lea     eax,[esi+8]
         push    eax
         call    MemoryError
-        pop     ecx
-        pop     edx
-        pop     eax
         jmp     continue8
 error16:
-        push    eax
-        push    edx
+        mov     [esi+16],ecx
+        mov     [esi+4+16],ebx
+        mov     ecx,data0
+        push    ecx // reference
         push    ecx
-        push    eax // reference
-        push    eax
-        mov     eax,[esi+16]  // read data
-        push    eax
-        mov     eax,[esi+16+4]
+        push    edx // read data
         push    eax
         lea     eax,[esi+16]
         push    eax
         call    MemoryError
-        pop     ecx
-        pop     edx
-        pop     eax
         jmp     continue16
 error24:
-        push    eax
-        push    edx
+        mov     [esi+24],ecx
+        mov     [esi+4+24],ebx
+        mov     ecx,data1
+        push    ecx // reference
         push    ecx
-        push    edx // reference
-        push    edx
-        mov     eax,[esi+24]  // read data
-        push    eax
-        mov     eax,[esi+24+4]
+        push    edx // read data
         push    eax
         lea     eax,[esi+24]
         push    eax
         call    MemoryError
-        pop     ecx
-        pop     edx
-        pop     eax
+        jmp     continue24
     }
-    goto     continue24;
 }
 
 DWORD __stdcall ComparePseudoRandom(void * addr,
