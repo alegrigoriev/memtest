@@ -2727,9 +2727,7 @@ void WriteBackAndInvalidateStandalone()
 {
     if (TestParams.CpuType >= 486)
     {
-        // Encode WBINVD manually.
-        // MSVC 4.2 incorrectly emits WBINVD inctruction
-        __asm __emit 0x0f __asm __emit 0x09
+        __asm WBINVD
     }
 }
 
