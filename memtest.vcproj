@@ -71,6 +71,8 @@
 				GlobalOptimizations="TRUE"
 				InlineFunctionExpansion="1"
 				EnableIntrinsicFunctions="TRUE"
+				FavorSizeOrSpeed="2"
+				OmitFramePointers="TRUE"
 				OptimizeForProcessor="1"
 				PreprocessorDefinitions="NDEBUG,WIN32,_CONSOLE,STANDALONE"
 				StringPooling="TRUE"
@@ -80,6 +82,7 @@
 				EnableFunctionLevelLinking="TRUE"
 				UsePrecompiledHeader="2"
 				PrecompiledHeaderFile=".\Release/memtest.pch"
+				AssemblerOutput="2"
 				AssemblerListingLocation=".\Release/"
 				ObjectFile=".\Release/"
 				ProgramDataBaseFileName=".\Release/"
@@ -97,7 +100,10 @@
 				GenerateMapFile="TRUE"
 				MapFileName=".\Release/memtest.map"
 				SubSystem="1"
-				EntryPointSymbol="MemtestStartup"/>
+				OptimizeReferences="2"
+				EnableCOMDATFolding="2"
+				EntryPointSymbol="MemtestStartup"
+				BaseAddress="0x400000"/>
 			<Tool
 				Name="VCMIDLTool"
 				TypeLibraryName=".\Release/memtest.tlb"/>
@@ -128,12 +134,6 @@
 					<Tool
 						Name="VCCLCompilerTool"
 						Optimization="2"
-						AssemblerOutput="2"/>
-				</FileConfiguration>
-				<FileConfiguration
-					Name="Release|Win32">
-					<Tool
-						Name="VCCLCompilerTool"
 						AssemblerOutput="2"/>
 				</FileConfiguration>
 			</File>
