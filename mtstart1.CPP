@@ -318,29 +318,35 @@ char const * IsOption(char const * arg, char const * option)
     return NULL;
 }
 
-BOOL ProcessCommandLine(int argc, char * * argv, MEMTEST_STARTUP_PARAMS * pParams)
+int ProcessCommandLine(int argc, char * * argv, MEMTEST_STARTUP_PARAMS * pParams)
 {
     argc--;
     argv++;
+    int ArgIdx = 1;
     if (argc > 0 && '-' != argv[0][0] && '/' != argv[0][0])
     {
         char * end_ptr;
         long size = strtol(argv[0], & end_ptr, 10);
         if (*end_ptr != 0 || size < 4)
             return FALSE;
+
         argv++;
         argc --;
+        ArgIdx++;
+
         long start = 0;
         if (argc > 0 && '-' != argv[0][0] && '/' != argv[0][0])
         {
             start = strtol(argv[0], & end_ptr, 10);
             if (*end_ptr != 0 || start < 0)
-                return FALSE;
+                return ArgIdx;
             argv++;
             argc --;
+            ArgIdx++;
         }
+
         if (start + size > 3072)
-            return FALSE;
+            return ArgIdx - 1;
         pParams->MemoryStart = start * 0x100000;
         pParams->MemoryTop = (start + size) * 0x100000;
     }
@@ -350,7 +356,7 @@ BOOL ProcessCommandLine(int argc, char * * argv, MEMTEST_STARTUP_PARAMS * pParam
         char const * option = argv[0];
         if (option[0] != '/' && option[0] != '-')
         {
-            return FALSE;
+            return ArgIdx;
         }
 
         option ++;
@@ -361,6 +367,7 @@ BOOL ProcessCommandLine(int argc, char * * argv, MEMTEST_STARTUP_PARAMS * pParam
         {
             char * last;
             long delay1, delay2;
+            ArgIdx++;
             if (argc < 3
                 || (delay1 = strtol(argv[1], & last, 10)) < 0
                 || delay1 > 1000
@@ -369,13 +376,14 @@ BOOL ProcessCommandLine(int argc, char * * argv, MEMTEST_STARTUP_PARAMS * pParam
                 || delay2 > 1000
                 || *last != 0)
             {
-                return FALSE;
+                return ArgIdx;
             }
 
             pParams->ShortDelay = delay1 * 1000L;
             pParams->LongDelay = delay2 * 1000L;
             argv += 2;
             argc -= 2;
+            ArgIdx++;
         }
         else if (NULL != (nextch = IsOption(option, "ro:w")))
         {
@@ -385,10 +393,11 @@ BOOL ProcessCommandLine(int argc, char * * argv, MEMTEST_STARTUP_PARAMS * pParam
             {
                 if (argc < 2)
                 {
-                    return FALSE;
+                    return ArgIdx;
                 }
                 argv ++;
                 argc --;
+                ArgIdx++;
                 nextch = argv[0];
             }
 
@@ -396,7 +405,7 @@ BOOL ProcessCommandLine(int argc, char * * argv, MEMTEST_STARTUP_PARAMS * pParam
             if ((row != 4 && row != 8 && row != 16 && row != 32 && row != 64)
                 || *last != 0)
             {
-                return FALSE;
+                return ArgIdx;
             }
             pParams->RowSize = row;
         }
@@ -442,12 +451,20 @@ BOOL ProcessCommandLine(int argc, char * * argv, MEMTEST_STARTUP_PARAMS * pParam
         }
         else if (NULL != (nextch = IsOption(option, "pat:tern")))
         {
-            char * last;
+            char * last = NULL;
             pParams->m_Pattern1 = strtoul(nextch, & last, 16);
 
             if (NULL != last && *last == ':')
             {
                 pParams->m_Pattern2 = strtoul(last+1, & last, 16);
+                if (NULL == last || *last != 0)
+                {
+                    return ArgIdx;
+                }
+            }
+            else
+            {
+                return ArgIdx;
             }
         }
         else if (IsOption(option, "nous*blegacy"))
@@ -462,10 +479,11 @@ BOOL ProcessCommandLine(int argc, char * * argv, MEMTEST_STARTUP_PARAMS * pParam
             {
                 if (argc < 2)
                 {
-                    return FALSE;
+                    return ArgIdx;
                 }
                 argv ++;
                 argc --;
+                ArgIdx++;
                 nextch = argv[0];
             }
 
@@ -473,18 +491,19 @@ BOOL ProcessCommandLine(int argc, char * * argv, MEMTEST_STARTUP_PARAMS * pParam
 
             if (*last != 0)
             {
-                return FALSE;
+                return ArgIdx;
             }
             pParams->m_PassCount = count;
         }
         else
         {
-            return FALSE;
+            return ArgIdx;
         }
         argv++;
         argc--;
+        ArgIdx++;
     }
-    return TRUE;
+    return 0;
 }
 
 int _cdecl main(int argc, char *argv[])
@@ -508,9 +527,10 @@ int _cdecl main(int argc, char *argv[])
 
     Startup.msp.RandomSeed = time(NULL);
 
-    if ( ! ProcessCommandLine( argc, argv, & Startup.msp))
+    int ArgResult = ProcessCommandLine( argc, argv, & Startup.msp);
+    if (ArgResult)
     {
-        fputs("Command Line Error, type MEMTEST /? for help", stderr);
+        fprintf(stderr, "Command Line Error in or after \"%s\", type MEMTEST /? for help", argv[ArgResult]);
         return -1;
     }
 #ifdef _DEBUG
