@@ -479,6 +479,20 @@ int _cdecl main(int argc, char *argv[])
         puts(help);
         return 0;
     }
+
+    PROTECTED_MODE_STARTUP_DATA Startup;
+    memset( & Startup, 0, sizeof Startup);
+
+    Startup.msp.MemoryTop = 0x20000000;   // 512 MB
+    Startup.msp.LongDelay = 60000;
+    Startup.msp.ShortDelay = 1000;
+    Startup.msp.RandomSeed = time(NULL);
+
+    if ( ! ProcessCommandLine( argc, argv, & Startup.msp))
+    {
+        fputs("Command Line Error, type MEMTEST /? for help", stderr);
+        return -1;
+    }
 #ifdef _DEBUG
     printf("Going to check for bare DOS...(press Enter)");
     fgets(fgetsbuf, sizeof fgetsbuf, stdin);
@@ -506,21 +520,8 @@ int _cdecl main(int argc, char *argv[])
         return -1;
     }
 
-    PROTECTED_MODE_STARTUP_DATA Startup;
-    memset( & Startup, 0, sizeof Startup);
-
-    Startup.msp.MemoryTop = 0x20000000;   // 512 MB
-    Startup.msp.LongDelay = 60000;
-    Startup.msp.ShortDelay = 1000;
     Startup.msp.CpuType = WORD(CpuType);
     Startup.msp.CpuFeatures = WORD(CpuType >> 16);
-    Startup.msp.RandomSeed = time(NULL);
-
-    if ( ! ProcessCommandLine( argc, argv, & Startup.msp))
-    {
-        fputs("Command Line Error, type MEMTEST /? for help", stderr);
-        return -1;
-    }
 
     if (Startup.msp.PassCount != 0)
     {
