@@ -31,6 +31,7 @@
                                     // by placing big load on them
 #define TEST_NO_USB_LEGACY         0x00080000UL
 #define TEST_FLAGS_FASTDETECT      0x00200000UL // use less thorough and faster detection
+#define TEST_FLAGS_PATTERN         0x00400000UL // use only specified 32-bit patterns
 #define TEST_FLAGS_IGNORE_XMM      0x01000000UL // Ignore XMM
 
 // test results:
@@ -190,6 +191,8 @@ struct MEMTEST_STARTUP_PARAMS
     DWORD RowSize;
     DWORD RandomSeed;
     DWORD Flags;
+    DWORD Pattern1;
+    DWORD Pattern2;
     WORD PassCount;
     WORD SMIEAddr;     // address of SMI Global Enable register in I/O space
     BYTE CursorRow;

@@ -2091,6 +2091,144 @@ void DoMemoryTestAlternatePattern(char * addr, size_t _size,
     }
 }
 
+void DoMemoryTestSpecialPattern(char * addr, size_t _size,
+                                DWORD Pattern1, DWORD Pattern2,
+                                DWORD flags)
+{
+    if (addr == NULL || _size == 0)
+    {
+        return;
+    }
+    for (int repeat = 32; repeat--;)
+    {
+        DoPreheatMemory(addr, _size, 0x10000, flags);
+        CheckForKey();
+
+        if(flags & TEST_EMPTY_CACHE)
+        {
+            WriteBackAndInvalidate();
+        }
+
+        // write test data to memory area
+        // print current test
+        char buf[256];
+        my_sprintf(buf,
+                   "\r                                      "
+                   "                                      \rPass %d,", TestPass);
+        my_puts(buf, FALSE);
+
+        my_sprintf(buf, "Pattern: %X%X %X%X",
+                   Pattern1, Pattern1,
+                   Pattern2, Pattern2);
+        my_puts(buf, FALSE);
+
+        // write the pattern first time,
+        // if two compare passes, compare it upward,
+        // then compare and rewrite with inverse pattern upward
+        // then if two compare passes, compare it downward
+        // then compare and rewrite with next pattern downward
+        //
+        if (31 == repeat)
+        {
+            WriteTestData(addr, _size, Pattern1, Pattern2, flags);
+        }
+
+#if defined(MAKEERROR) && defined (_DEBUG)
+        // insert random error
+        {
+            DWORD _offset = 0;
+            __asm {
+                call    rand
+                MUL     _size
+                mov     ecx,RAND_MAX
+                DIV     ecx
+                mov     _offset,eax
+            }
+            char * erraddr = addr + _offset;
+            unsigned char err = char(rand());
+            if (erraddr >= addr && erraddr < addr + _size)
+            {
+                *erraddr ^= err;
+                my_sprintf(buf, "\nError introduced at %x, data = %x\r",
+                           GetPhysAddr(erraddr), err);
+                my_puts(buf, 0);
+            }
+        }
+#endif
+        CheckForKey();
+
+        if(flags & TEST_EMPTY_CACHE)
+        {
+            WriteBackAndInvalidate();
+        }
+
+        // check test data
+        if (flags & TEST_DELAY)
+        {
+            // delay idle
+            Delay(TestDelay);
+            CheckForKey();
+        }
+
+        if (flags & TEST_READ_TWICE)
+        {
+            CompareTestData(addr, _size, Pattern1, Pattern2, 0, 0, flags);
+        }
+        CompareTestData(addr, _size, Pattern1, Pattern2, ~Pattern1, ~Pattern2,
+                        flags | TEST_REPLACE);
+
+        CheckForKey();
+
+        if(flags & TEST_EMPTY_CACHE)
+        {
+            WriteBackAndInvalidate();
+        }
+
+#if defined(MAKEERROR) && defined (_DEBUG)
+        // insert random error
+        {
+            DWORD _offset = 0;
+            __asm {
+                call    rand
+                MUL     _size
+                mov     ecx,RAND_MAX
+                DIV     ecx
+                mov     _offset,eax
+            }
+            char * erraddr = addr + _offset;
+            unsigned char err = char(rand());
+            if (erraddr >= addr && erraddr < addr + _size)
+            {
+                *erraddr ^= err;
+                my_sprintf(buf, "\nError introduced at %x, data = %x\r",
+                           GetPhysAddr(erraddr), err);
+                my_puts(buf, 0);
+            }
+        }
+#endif
+
+        if (flags & TEST_DELAY)
+        {
+            // delay idle
+            Delay(TestDelay);
+            CheckForKey();
+        }
+
+        // check test data
+        if (flags & TEST_READ_TWICE)
+        {
+            CompareTestDataBackward(addr, _size, ~Pattern1, ~Pattern2, 0, 0, flags);
+            CheckForKey();
+        }
+        CompareTestDataBackward(addr, _size, ~Pattern1, ~Pattern2,
+                                _rotr(Pattern1, 1), _rotr(Pattern2, 1),
+                                TEST_REPLACE | flags);
+
+        Pattern1 = _rotr(Pattern1, 1);
+        Pattern2 = _rotr(Pattern2, 1);
+    }
+}
+
 void DoMemoryTestUniformPattern(char * addr, size_t _size,
                                 DWORD flags)
 {
@@ -2388,28 +2526,40 @@ void __stdcall MemtestEntry()
                 TestDelay = TestParams.LongDelay;
             }
 
-            seed = DoRandomMemoryTest(TestStartVirtAddr, MemoryToTestSize,
-                                      seed, 0x08080000, flags);
+            if (TestFlags & TEST_FLAGS_PATTERN)
+            {
+                DoMemoryTestSpecialPattern(TestStartVirtAddr,
+                                           MemoryToTestSize, TestParams.Pattern1, TestParams.Pattern2, flags);
+
+                DoMemoryTestSpecialPattern(TestStartVirtAddr,
+                                           MemoryToTestSize, TestParams.Pattern2, TestParams.Pattern1, flags);
+            }
+            else
+            {
+                seed = DoRandomMemoryTest(TestStartVirtAddr, MemoryToTestSize,
+                    seed, 0x08080000, flags);
 
 #ifndef _DEBUG
-            DoMemoryTestAlternatePattern(TestStartVirtAddr,
-                                         MemoryToTestSize, flags | TEST_RUNNING0);
+                DoMemoryTestAlternatePattern(TestStartVirtAddr,
+                    MemoryToTestSize, flags | TEST_RUNNING0);
 
-            DoMemoryTestAlternatePattern(TestStartVirtAddr,
-                                         MemoryToTestSize, flags | TEST_RUNNING1);
+                DoMemoryTestAlternatePattern(TestStartVirtAddr,
+                    MemoryToTestSize, flags | TEST_RUNNING1);
 
-            DoMemoryTestUniformPattern(TestStartVirtAddr,
-                                       MemoryToTestSize, flags | TEST_ALL1);
+                DoMemoryTestUniformPattern(TestStartVirtAddr,
+                    MemoryToTestSize, flags | TEST_ALL1);
 
-            DoMemoryTestUniformPattern(TestStartVirtAddr,
-                                       MemoryToTestSize, flags | TEST_ALL0);
+                DoMemoryTestUniformPattern(TestStartVirtAddr,
+                    MemoryToTestSize, flags | TEST_ALL0);
 
-            DoMemoryTestUniformPattern(TestStartVirtAddr,
-                                       MemoryToTestSize, flags | TEST_ALL1);
+                DoMemoryTestUniformPattern(TestStartVirtAddr,
+                    MemoryToTestSize, flags | TEST_ALL1);
 
-            DoMemoryTestUniformPattern(TestStartVirtAddr,
-                                       MemoryToTestSize, flags | TEST_ALL0);
+                DoMemoryTestUniformPattern(TestStartVirtAddr,
+                    MemoryToTestSize, flags | TEST_ALL0);
+
 #endif
+            }
 
             if (TestPass == TestParams.PassCount)
             {

@@ -29,6 +29,7 @@ char help[] = "Command line: MEMTEST [<size> [<start>]] <options>\n"
               "/preheat - perform memory preheat;\n"
               "/nocache - disable caching (not recommended);\n"
               "/nocheck - don't enable machine check interrupt;\n"
+              "/pattern:xxxxxxxx:xxxxxxxx - use the specified test pattern (hex code);\n"
               "/fastdetect - use fast memory size detection;\n"
               "/ignorexmm - start even if HIMEM.SYS is loaded\n"
               "        (if Windows ME recovery disk is booted).\n"
@@ -428,6 +429,17 @@ BOOL ProcessCommandLine(int argc, char * * argv, MEMTEST_STARTUP_PARAMS * pParam
         else if (IsOption(option, "ig*norexmm"))
         {
             pParams->Flags |= TEST_FLAGS_IGNORE_XMM;
+        }
+        else if (NULL != (nextch = IsOption(option, "pat:tern")))
+        {
+            char * last;
+            pParams->Pattern1 = strtoul(nextch, & last, 16);
+
+            if (NULL != last && *last == ':')
+            {
+                pParams->Flags |= TEST_FLAGS_PATTERN;
+                pParams->Pattern2 = strtoul(last+1, & last, 16);
+            }
         }
         else if (IsOption(option, "nous*blegacy"))
         {
