@@ -2216,6 +2216,75 @@ DWORD DoRandomMemoryTest(char * addr, size_t _size, DWORD seed,
     return new_seed;
 }
 
+#ifdef _DEBUG
+void VerifyPageTable(void * pPhysStart, void * pPhysEnd,
+                     void * pVirtStart, size_t TestSize,
+                     void * TestCodePhysAddr, size_t TestCodeSize)
+{
+    // check that correct page table is used
+    // check that the mapped memory does not include any memory outside the range
+    // and doesn't include the program memory
+    void * pVirtEnd = (char*)pVirtStart + TestSize;
+    char * p = (char*)pVirtStart;
+    char s[128];
+    void * PhysAddr;
+    my_sprintf(s, "Verifying the page table... Va=%x, siz=%x, code=%x\r", pVirtStart,
+               TestSize, TestCodePhysAddr);
+    my_puts(s);
+    if (pVirtEnd < pVirtStart)
+    {
+        my_puts("pVirtStart + TestSize < pVirtStart\n", TRUE);
+        return;
+    }
+    PhysAddr = GetPhysAddr(VerifyPageTable);
+    if (PhysAddr < TestCodePhysAddr
+        || PhysAddr >= (char*)TestCodePhysAddr+TestCodeSize)
+    {
+        my_sprintf(s, "\nProgram PhysAddr(%x)=%x is out of range (%x-%x)\n", VerifyPageTable,
+                   PhysAddr, TestCodePhysAddr, (char*)TestCodePhysAddr+TestCodeSize);
+        my_puts(s, TRUE);
+    }
+
+    // check every page
+    for ( ; p < pVirtEnd; p += 0x1000)
+    {
+        PhysAddr = GetPhysAddr(p);
+        if (PhysAddr < pMemoryToTestStart)
+        {
+            my_sprintf(s, "\nPhysAddr(%x)=%x < pMemoryToTestStart\n", p, PhysAddr);
+            my_puts(s, TRUE);
+        }
+        if (PhysAddr >= pMemoryToTestEnd)
+        {
+            my_sprintf(s, "\nPhysAddr(%x)=%x >= pMemoryToTestEnd\n", p, PhysAddr);
+            my_puts(s, TRUE);
+        }
+        if (PhysAddr >= (void*)0xA0000 && PhysAddr < (void*)0x100000)
+        {
+            my_sprintf(s, "\nPhysAddr(%x)=%x in A0000-100000 range\n", p, PhysAddr);
+            my_puts(s, TRUE);
+        }
+        if (PhysAddr >= CurrentPhysProgramLocation
+            && PhysAddr < (char*)CurrentPhysProgramLocation + MemoryInUseByProgram)
+        {
+            my_sprintf(s, "\nPhysAddr(%x)=%x in program range(%x-%x)\n", p, PhysAddr,
+                       CurrentPhysProgramLocation, (char*)CurrentPhysProgramLocation + MemoryInUseByProgram);
+            my_puts(s, TRUE);
+        }
+        // check that the page is mapped only once
+        if (0)for (char * p1 = (char*)pVirtStart; p1 < pVirtEnd; p1+=0x1000)
+        {
+            if (GetPhysAddr(p1) == PhysAddr
+                && p1 != p)
+            {
+                my_sprintf(s, "\nPhysAddr %x mapped at %x and %x\n", PhysAddr, p, p1);
+                my_puts(s, TRUE);
+            }
+        }
+    }
+}
+#endif
+
 void __stdcall MemtestEntry()
 {
     DWORD flags;
@@ -2228,6 +2297,11 @@ void __stdcall MemtestEntry()
         // map all left physical memory
         size_t MemoryToTestSize = MapMemoryToTest(CurrentPhysProgramLocation, MemoryInUseByProgram,
                                                   pMemoryToTestStart, pMemoryToTestEnd);
+#ifdef _DEBUG
+        VerifyPageTable(pMemoryToTestStart, pMemoryToTestEnd,
+                        TestStartVirtAddr, MemoryToTestSize,
+                        CurrentPhysProgramLocation, MemoryInUseByProgram);
+#endif
 
         // perform test with different read pattern and with refresh check delay
         flags = TestFlags;
@@ -2294,6 +2368,7 @@ void __stdcall MemtestEntry()
             seed = DoRandomMemoryTest(TestStartVirtAddr, MemoryToTestSize,
                                       seed, 0x08080000, flags);
 
+#ifndef _DEBUG
             DoPreheatMemory(TestStartVirtAddr, MemoryToTestSize, 0x10000, flags);
             DoMemoryTestAlternatePattern(TestStartVirtAddr,
                                          MemoryToTestSize, flags | TEST_RUNNING0);
@@ -2317,6 +2392,7 @@ void __stdcall MemtestEntry()
             DoPreheatMemory(TestStartVirtAddr, MemoryToTestSize, 0x10000, flags);
             DoMemoryTestUniformPattern(TestStartVirtAddr,
                                        MemoryToTestSize, flags | TEST_ALL0);
+#endif
 
             if (TestPass == PassCount)
             {
@@ -3009,7 +3085,11 @@ void RelocateProgram(void)
             }
         }
 
-
+#ifdef _DEBUG
+        char s[90];
+        my_sprintf(s, "\rRelocating the program to %X\n", CurrentPhysProgramLocation);
+        my_puts(s, FALSE);
+#endif
         MapVirtualToPhysical((void*)0x800000, CurrentPhysProgramLocation,
                              MemoryInUseByProgram);
         DWORD * pNewPageDirectory = PageTablePtr + 0x100000; // 4 MB up
