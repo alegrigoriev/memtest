@@ -329,9 +329,8 @@ char * itod(char * buffer, DWORD n)
 }
 
 // only %x and %d formats are supported
-void my_sprintf(char * buffer, const char * format, ...)
+void my_vsprintf(char * buffer, const char * format, void * vararg)
 {
-    void * vararg = 1 + &format;
     do
     {
         char c = *format++;
@@ -359,6 +358,19 @@ void my_sprintf(char * buffer, const char * format, ...)
             }
         }
     } while (*buffer++);
+}
+
+void my_printf(const char * format, ...)
+{
+    char buffer[1024];
+    my_vsprintf(buffer, format, 1 + &format);
+    my_puts(buffer);
+}
+
+// only %x and %d formats are supported
+void my_sprintf(char * buffer, const char * format, ...)
+{
+    my_vsprintf(buffer, format, 1 + &format);
 }
 
 void StoreResultAndReboot(int result)
@@ -1977,16 +1989,12 @@ void DoMemoryTestAlternatePattern(char * addr, size_t _size,
         }
         // write test data to memory area
         // print current test
-        char buf[256];
-        my_sprintf(buf,
-                   "\r                                      "
+        my_printf("\r                                      "
                    "                                      \rPass %d,", TestPass);
-        my_puts(buf, FALSE);
 
-        my_sprintf(buf, "Pattern: %X%X %X%X",
+        my_printf("Pattern: %X%X %X%X",
                    pattern, pattern,
                    ~pattern, ~pattern);
-        my_puts(buf, FALSE);
 
         // write the pattern first time,
         // if two compare passes, compare it upward,
@@ -2014,9 +2022,8 @@ void DoMemoryTestAlternatePattern(char * addr, size_t _size,
             if (erraddr >= addr && erraddr < addr + _size)
             {
                 *erraddr ^= err;
-                my_sprintf(buf, "\nError introduced at %x, data = %x\r",
+                my_printf("\nError introduced at %x, data = %x\r",
                            GetPhysAddr(erraddr), err);
-                my_puts(buf, 0);
             }
         }
 #endif
@@ -2065,9 +2072,8 @@ void DoMemoryTestAlternatePattern(char * addr, size_t _size,
             if (erraddr >= addr && erraddr < addr + _size)
             {
                 *erraddr ^= err;
-                my_sprintf(buf, "\nError introduced at %x, data = %x\r",
+                my_printf("\nError introduced at %x, data = %x\r",
                            GetPhysAddr(erraddr), err);
-                my_puts(buf, 0);
             }
         }
 #endif
@@ -2111,16 +2117,12 @@ void DoMemoryTestSpecialPattern(char * addr, size_t _size,
 
         // write test data to memory area
         // print current test
-        char buf[256];
-        my_sprintf(buf,
-                   "\r                                      "
+        my_printf("\r                                      "
                    "                                      \rPass %d,", TestPass);
-        my_puts(buf, FALSE);
 
-        my_sprintf(buf, "Pattern: %X%X %X%X",
+        my_printf("Pattern: %X%X %X%X",
                    Pattern1, Pattern1,
                    Pattern2, Pattern2);
-        my_puts(buf, FALSE);
 
         // write the pattern first time,
         // if two compare passes, compare it upward,
@@ -2149,9 +2151,8 @@ void DoMemoryTestSpecialPattern(char * addr, size_t _size,
             if (erraddr >= addr && erraddr < addr + _size)
             {
                 *erraddr ^= err;
-                my_sprintf(buf, "\nError introduced at %x, data = %x\r",
-                           GetPhysAddr(erraddr), err);
-                my_puts(buf, 0);
+                my_printf("\nError introduced at %x, data = %x\r",
+                          GetPhysAddr(erraddr), err);
             }
         }
 #endif
@@ -2200,9 +2201,8 @@ void DoMemoryTestSpecialPattern(char * addr, size_t _size,
             if (erraddr >= addr && erraddr < addr + _size)
             {
                 *erraddr ^= err;
-                my_sprintf(buf, "\nError introduced at %x, data = %x\r",
-                           GetPhysAddr(erraddr), err);
-                my_puts(buf, 0);
+                my_printf("\nError introduced at %x, data = %x\r",
+                          GetPhysAddr(erraddr), err);
             }
         }
 #endif
@@ -2251,14 +2251,10 @@ void DoMemoryTestUniformPattern(char * addr, size_t _size,
     }
     // write test data to memory area
     // print current test
-    char buf[256];
-    my_sprintf(buf,
-               "\r                                      "
+    my_printf("\r                                      "
                "                                      \rPass %d,", TestPass);
-    my_puts(buf, FALSE);
 
-    my_sprintf(buf, "Pattern: %X%X", pattern, pattern);
-    my_puts(buf, FALSE);
+    my_printf("Pattern: %X%X", pattern, pattern);
 
     WriteTestData(addr, _size, pattern, pattern, flags);
 
@@ -2278,9 +2274,8 @@ void DoMemoryTestUniformPattern(char * addr, size_t _size,
         if (erraddr >= addr && erraddr < addr + _size)
         {
             *erraddr ^= err;
-            my_sprintf(buf, "\nError introduced at %x, data = %x\r",
+            my_printf("\nError introduced at %x, data = %x\r",
                        GetPhysAddr(erraddr), err);
-            my_puts(buf, 0);
         }
     }
 #endif
@@ -2317,12 +2312,9 @@ DWORD DoRandomMemoryTest(char * addr, size_t _size, DWORD seed,
     }
     // write test data to memory area
     // print current test
-    char buf[256];
-    my_sprintf(buf,
-               "\r                                      "
-               "                                      \rPass %d,", TestPass);
-    my_puts(buf, FALSE);
-
+    my_printf("\r                                      "
+              "                                      \rPass %d, "
+              "Testing random pattern...", TestPass);
     my_puts("Testing random pattern...", FALSE);
 
     if (addr == NULL || _size == 0)
@@ -2348,9 +2340,8 @@ DWORD DoRandomMemoryTest(char * addr, size_t _size, DWORD seed,
         if (erraddr >= addr && erraddr < addr + _size)
         {
             *erraddr ^= err;
-            my_sprintf(buf, "\nError introduced at %x, data = %x\r",
-                       GetPhysAddr(erraddr), err);
-            my_puts(buf, 0);
+            my_printf("\nError introduced at %x, data = %x\r",
+                      GetPhysAddr(erraddr), err);
         }
     }
 #endif
@@ -2592,9 +2583,7 @@ void PrintMachinePerformance(MEMTEST_STARTUP_PARAMS * pTestParams)
     DWORD cpu_clock = DWORD(ReadTSC());
     Delay(100);
     cpu_clock = DWORD(ReadTSC()) - cpu_clock;
-    char buf[80];
-    my_sprintf(buf, "CPU clock rate: %d MHz\n", (cpu_clock + 50000) / 100000);
-    my_puts(buf);
+    my_printf("CPU clock rate: %d MHz\n", (cpu_clock + 50000) / 100000);
 
     // measure L2 cache read/write speed
     MapVirtualToPhysical((void*)0x800000, (void*)0x800000, 0x400000);
@@ -2627,12 +2616,11 @@ void PrintMachinePerformance(MEMTEST_STARTUP_PARAMS * pTestParams)
     }
     wpclock = DWORD(ReadTSC()) - wpclock;
 
-    my_sprintf(buf, "L2 Cache speed: read=%d MB/s, write=%d MB/s, "
-               "write/allocate=%d MB/s\n",
-               (25 * (cpu_clock / 2)) / rclock,
-               (25 * (cpu_clock / 2)) / wclock,
-               (25 * (cpu_clock / 2)) / wpclock);
-    my_puts(buf);
+    my_printf("L2 Cache speed: read=%d MB/s, write=%d MB/s, "
+              "write/allocate=%d MB/s\n",
+              (25 * (cpu_clock / 2)) / rclock,
+              (25 * (cpu_clock / 2)) / wclock,
+              (25 * (cpu_clock / 2)) / wpclock);
 
     // measure memory read/write speed
     rclock = DWORD(ReadTSC());
@@ -2656,12 +2644,11 @@ void PrintMachinePerformance(MEMTEST_STARTUP_PARAMS * pTestParams)
     }
     wpclock = DWORD(ReadTSC()) - wpclock;
 
-    my_sprintf(buf, "Main memory speed: read=%d MB/s, write=%d MB/s, "
-               "write/allocate=%d MB/s\n",
-               (25 * (cpu_clock / 2)) / (rclock / 32),
-               (25 * (cpu_clock / 2)) / (wclock / 32),
-               (25 * (cpu_clock / 2)) / (wpclock / 32));
-    my_puts(buf);
+    my_printf("Main memory speed: read=%d MB/s, write=%d MB/s, "
+              "write/allocate=%d MB/s\n",
+              (25 * (cpu_clock / 2)) / (rclock / 32),
+              (25 * (cpu_clock / 2)) / (wclock / 32),
+              (25 * (cpu_clock / 2)) / (wpclock / 32));
     // find how much memory is cached
 }
 
@@ -2734,11 +2721,10 @@ char * InitMemtest(MEMTEST_STARTUP_PARAMS * pTestParams)
 
     my_puts("To terminate test and restart the computer,\n"
             "press Ctrl+Alt+Del or RESET button, or turn power off then on\n", FALSE);
-    char buffer[80];
-    my_sprintf(buffer,"Memory to test: %x to %x (%d megabytes)\n",
-               TestParams.MemoryStart, TestParams.MemoryTop,
-               (TestParams.MemoryTop - TestParams.MemoryStart) >> 20);
-    my_puts(buffer,FALSE);
+
+    my_printf("Memory to test: %x to %x (%d megabytes)\n",
+              TestParams.MemoryStart, TestParams.MemoryTop,
+              (TestParams.MemoryTop - TestParams.MemoryStart) >> 20);
 
     // allocate extra memory after the program for stack, TSS, GDT, IDT
     TopProgramAddress = (char*)(TestParams.ProgramTop);
@@ -2812,10 +2798,8 @@ char * InitMemtest(MEMTEST_STARTUP_PARAMS * pTestParams)
     if (TestParams.Flags & TEST_FLAGS_PERFORMANCE)
 #endif
     {
-        char buf[80];
-        my_sprintf(buf, "CPU class: %d, feature word: %x\n",
-                   TestParams.CpuType, TestParams.CpuFeatures);
-        my_puts(buf, FALSE);
+        my_printf("CPU class: %d, feature word: %x\n",
+                  TestParams.CpuType, TestParams.CpuFeatures);
     }
 
     if (TestParams.CpuFeatures & CPUID_MACHINE_CHECK_EXCEPTION
@@ -3253,9 +3237,7 @@ void RelocateProgram(void)
         }
 
 #ifdef _DEBUG
-        char s[90];
-        my_sprintf(s, "\rRelocating the program to %X\n", CurrentPhysProgramLocation);
-        my_puts(s, FALSE);
+        my_printf("\rRelocating the program to %X\n", CurrentPhysProgramLocation);
 #endif
         MapVirtualToPhysical((void*)0x800000, CurrentPhysProgramLocation,
                              MemoryInUseByProgram);
@@ -3468,9 +3450,7 @@ void DetectInstalledMemory(MEMTEST_STARTUP_PARAMS * pTestParams)
     {
         if ((DWORD(pStart) & 0xFFFFF) == 0)
         {
-            char buf[80];
-            my_sprintf(buf, "Detecting physical memory, %dM\r", DWORD(pStart) >> 20);
-            my_puts(buf, FALSE);
+            my_printf("Detecting physical memory, %dM\r", DWORD(pStart) >> 20);
         }
         MapVirtualToPhysical(check_addr, pStart, 0x1000);
 
