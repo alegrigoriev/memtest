@@ -6,6 +6,7 @@
 #include <string.h>
 #include <dos.h>
 #include <conio.h>
+#include <malloc.h>
 #include "mtstart.h"
 #include "memtest.h"
 
@@ -87,7 +88,7 @@ BOOL LoadPE(char * pFilename, PROTECTED_MODE_STARTUP_DATA * pStartup)
     // calculate required size and allocate the memory
     DWORD ModuleRequiredMemory = PE_opt_header.ImageSize + 0x1000u; // page alignment
     // allocate memory
-    char huge * pModuleMemory = new huge char[ModuleRequiredMemory];
+    char huge * pModuleMemory = (char __huge *) _halloc(ModuleRequiredMemory, 1);
     if (NULL == pModuleMemory)
     {
         fclose(pFile);
@@ -160,8 +161,13 @@ BOOL LoadPE(char * pFilename, PROTECTED_MODE_STARTUP_DATA * pStartup)
 void InitInterruptTable(GATE far * pIDT);
 void ProtectedModeStart(PROTECTED_MODE_STARTUP_DATA * pStartup)
 {
-    char huge * pTmp = new far char[0x1000 + sizeof PROTECTED_MODE_STARTUP_MEMORY];
-    if (NULL == pTmp) return;   // unable to start
+    char huge * pTmp = new huge char[0x1000 + sizeof PROTECTED_MODE_STARTUP_MEMORY];
+    if (NULL == pTmp)
+    {
+        printf("Unable to allocate startup memory\n");
+        PAUSE("");
+        return;   // unable to start
+    }
 
     // disable USB legacy SMI interrupt
     if (pStartup->msp.SMIEAddr != NULL)
