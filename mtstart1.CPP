@@ -3,6 +3,7 @@
 #include <dos.h>
 #include <stdlib.h>
 #include <time.h>
+#include <conio.h>
 
 #pragma pack (1)
 
@@ -256,6 +257,22 @@ inline void SetRTCDefaults()
     WriteRTCReg(RTC_SECOND_ALARM, TEST_RESULT_CRASH);
 }
 
+inline void GetCursorPosition(MEMTEST_STARTUP_PARAMS * pParams)
+{
+    BYTE row;
+    __asm {
+        mov     ah,3
+        mov     bh,0
+        int     0x10
+        mov     row,dh
+    }
+    pParams->CursorRow = row;
+#ifdef _DEBUG
+    printf("Cursor row=%d(press Enter)", row);
+    fgets(fgetsbuf, sizeof fgetsbuf, stdin);
+#endif
+}
+
 BOOL ProcessCommandLine(int argc, char * * argv, MEMTEST_STARTUP_PARAMS * pParams)
 {
     argc--;
@@ -469,6 +486,8 @@ int _cdecl main(int argc, char *argv[])
     {
         DisableUsbLegacy( & Startup.msp);
     }
+
+    GetCursorPosition( & Startup.msp);
 
 #ifdef _DEBUG
     printf("Going to enter protected mode...(press Enter)");

@@ -190,6 +190,8 @@ struct MEMTEST_STARTUP_PARAMS
     DWORD Flags;
     WORD PassCount;
     WORD SMIEAddr;     // address of SMI Global Enable register in I/O space
+    BYTE CursorRow;
+    BYTE CursorColumn;
 };
 
 struct PROTECTED_MODE_STARTUP_DATA

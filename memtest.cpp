@@ -2428,6 +2428,10 @@ char * InitMemtest(MEMTEST_STARTUP_PARAMS * pTestParams)
     // pTestParams is a pointer to test parameters,
     // obtained by startup module from system configuration
     // and command line options.
+
+    // get current cursor position
+    curr_row = pTestParams->CursorRow;
+
     CpuType = pTestParams->CpuType;
     RandomSeed = pTestParams->RandomSeed;
     PassCount = pTestParams->PassCount;

@@ -5,8 +5,11 @@
 #include <stdio.h>
 #include <string.h>
 #include <dos.h>
+#include <conio.h>
 #include "mtstart.h"
 #include "memtest.h"
+
+#pragma intrinsic(_inpw, _outpw)
 
 #ifdef _DEBUG
 extern char fgetsbuf[30];
