@@ -45,6 +45,16 @@ x. Тесты внешнего кэша:
 #endif
 
 #define __far
+extern "C" {
+    int __cdecl _inp(unsigned short);
+    unsigned short __cdecl _inpw(unsigned short);
+    unsigned long __cdecl _inpd(unsigned short);
+    int __cdecl _outp(unsigned short, int);
+    unsigned short __cdecl _outpw(unsigned short, unsigned short);
+    unsigned long __cdecl _outpd(unsigned short, unsigned long);
+}
+#pragma intrinsic(_inp, _inpw, _inpd, _outp, _outpw, _outpd)
+
 #include "memtest.h"
 
 #include <memory.h>
@@ -63,6 +73,8 @@ int refresh_delay = 1000;    // ms
 int long_delay = 60000; // 60 seconds
 int TestDelay;
 DWORD RandomSeed;
+int PassCount;
+BOOL RebootOnFinish;
 static DWORD dwRandSeed = 0xFFFFFFFF;
 size_t SpecifiedRowSize = 0;
 size_t MemoryRowSize = 0;    // vary from 4K to 64K
@@ -389,6 +401,17 @@ void my_sprintf(char * buffer, const char * format, ...)
     } while (*buffer++);
 }
 
+void StoreResultAndReboot(int result)
+{
+    //test result is stored in the RTC alarm registers
+    // result TEST_RESULT_SUCCESS: success
+    // TEST_RESULT_CTRL_ALT_DEL: test was terminated because of Ctrl-Alt-Del
+    // TEST_RESULT_MEMORY_ERROR: memory error detected
+    // TEST_RESULT_CRASH: test seemed to crash or computer was reset
+    WriteRTCReg(RTC_SECOND_ALARM, result);
+    Reboot();
+}
+
 void __stdcall MemoryError(void * addr,
                            DWORD data_high, DWORD data_low, // read QWORD
                            DWORD ref_high, DWORD ref_low)  // reference QWORD
@@ -398,6 +421,11 @@ void __stdcall MemoryError(void * addr,
     char buffer[80];
     ASSERT(sizeof "\nAddr: 12345678: written: 0123456789ABCDEF, read: 0123456789ABCDEF\n"
            < 79);
+    if (RebootOnFinish)
+    {
+        StoreResultAndReboot(TEST_RESULT_MEMORY_ERROR);
+    }
+
     my_sprintf(buffer, "\nAddr: %x: written: %x%x, read: %x%x\n",
                GetPhysAddr(addr), ref_high, ref_low, data_high, data_low);
     my_puts(buffer, TRUE, 0x0f00); // TRUE - it is error message
@@ -2001,7 +2029,14 @@ int CheckForKey()
             }
             if (ctrl && alt)
             {
-                Reboot();
+                if (RebootOnFinish)
+                {
+                    StoreResultAndReboot(TEST_RESULT_CTRL_ALT_DEL);
+                }
+                else
+                {
+                    Reboot();
+                }
             }
             break;
 
@@ -2411,6 +2446,10 @@ void __stdcall MemtestEntry()
             DoMemoryTestUniformPattern(TestStartVirtAddr,
                                        MemoryToTestSize, flags | TEST_ALL0);
 
+            if (TestPass == PassCount)
+            {
+                StoreResultAndReboot(TEST_RESULT_SUCCESS);    // success
+            }
             TestPass++;
         }
         row_size *= 2;
@@ -2519,6 +2558,12 @@ char * InitMemtest(MEMTEST_STARTUP_PARAMS * pTestParams)
     // and command line options.
     CpuType = pTestParams->CpuType;
     RandomSeed = pTestParams->RandomSeed;
+    PassCount = pTestParams->PassCount;
+    if (PassCount != 0)
+    {
+        RebootOnFinish = TRUE;
+    }
+
     if (pTestParams->Flags & TEST_READ_TWICE)
     {
         TestFlags |= TEST_READ_TWICE;

@@ -29,6 +29,20 @@
 #define TEST_NO_MACHINE_CHECK      0x00020000UL
 #define TEST_FLAGS_PREHEAT_MEMORY  0x00040000UL  // preheat memory chips
                                     // by placing big load on them
+// test results:
+#define TEST_RESULT_SUCCESS         0x60
+#define TEST_RESULT_CTRL_ALT_DEL    0x61
+#define TEST_RESULT_MEMORY_ERROR    0x62
+#define TEST_RESULT_CRASH           0x63
+
+// RTC registers:
+#define RTC_SECONDS       0
+#define RTC_SECOND_ALARM  1
+#define RTC_MINUTES       2
+#define RTC_MINUTES_ALARM 3
+#define RTC_HOURS         4
+#define RTC_HOURS_ALARM   5
+#define RTC_REGISTER_B      0x0B
 
 #define PAGE_DIR_FLAG_PRESENT       1
 #define PAGE_DIR_FLAG_WRITABLE      2
@@ -172,6 +186,7 @@ struct MEMTEST_STARTUP_PARAMS
     DWORD RowSize;
     DWORD RandomSeed;
     DWORD Flags;
+    WORD PassCount;
 };
 
 struct PROTECTED_MODE_STARTUP_DATA
@@ -199,4 +214,29 @@ static void InitDescriptor(DESCRIPTOR __far & d, DWORD flat_base, DWORD limit,
         d.limit_0_15 = WORD(limit);
         d.flags2_limit_16_19 |= 0xF & (limit >> 16);
     }
+}
+
+#define RTC_INDEX_REG   0x70
+#define RTC_DATA_REG    0x71
+
+extern "C" void _enable();
+extern "C" void _disable();
+#pragma intrinsic(_enable, _disable)
+
+static inline void WriteRTCReg(int Addr, BYTE Data)
+{
+    _disable();
+    _outp(RTC_INDEX_REG, Addr & 0x7F);
+    _outp(RTC_DATA_REG, Data);
+    _enable();
+}
+
+static inline BYTE ReadRTCReg(int Addr)
+{
+    BYTE tmp;
+    _disable();
+    _outp(RTC_INDEX_REG, Addr & 0x7F);
+    tmp = _inp(RTC_DATA_REG);
+    _enable();
+    return tmp;
 }

@@ -137,6 +137,36 @@ void ResetFloppies()
     }
 }
 
+void CheckForTestRerun()
+{
+    BYTE AlarmS = ReadRTCReg(RTC_SECOND_ALARM);
+    WriteRTCReg(RTC_SECOND_ALARM, 0);
+
+    switch (AlarmS)
+    {
+    case TEST_RESULT_SUCCESS:
+        printf("\nPrevious test run successfully completed\n");
+        break;
+    case TEST_RESULT_CTRL_ALT_DEL:
+        printf("\nPrevious test run terminated by Ctrl+Alt+Del\n");
+        break;
+    case TEST_RESULT_MEMORY_ERROR:
+        printf("\nPrevious test run found a memory error\n");
+        break;
+    case TEST_RESULT_CRASH:
+        printf("\nPrevious test run crashed or terminated by Reset\n");
+        break;
+    default:
+        return;
+    }
+    exit(AlarmS - TEST_RESULT_SUCCESS);
+}
+
+inline void SetRTCDefaults()
+{
+    WriteRTCReg(RTC_SECOND_ALARM, TEST_RESULT_CRASH);
+}
+
 BOOL ProcessCommandLine(int argc, char * * argv, MEMTEST_STARTUP_PARAMS * pParams)
 {
     argc--;
@@ -228,6 +258,24 @@ BOOL ProcessCommandLine(int argc, char * * argv, MEMTEST_STARTUP_PARAMS * pParam
         {
             pParams->Flags |= TEST_NO_MACHINE_CHECK;
         }
+        else if (0 == stricmp(option, "passcount"))
+        {
+            char * last;
+            int count;
+            if (argc < 2)
+            {
+                return FALSE;
+            }
+
+            count = (int)strtol(argv[1], & last, 10);
+            if (*last != 0)
+            {
+                return FALSE;
+            }
+            pParams->PassCount = count;
+            argv ++;
+            argc --;
+        }
         else
         {
             return FALSE;
@@ -301,8 +349,12 @@ int _cdecl main(int argc, char *argv[])
         return -1;
     }
 
-    //MemorySizes ms;
-    //GetMemorySizes( & ms);
+    if (Startup.msp.PassCount != 0)
+    {
+        CheckForTestRerun();
+        // set RTC values to detect crash
+        SetRTCDefaults();
+    }
 
 #ifdef _DEBUG
     printf("Going to load PE module...(press Enter)");
