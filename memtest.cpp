@@ -2685,6 +2685,11 @@ char * InitMemtest(MEMTEST_STARTUP_PARAMS * pTestParams)
     TestFlags |= pTestParams->Flags
                  & (TEST_READ_TWICE | TEST_FLAGS_PATTERN | TEST_FLAGS_128BIT);
 
+    if (pTestParams->Flags & TEST_FLAGS_NOPREFETCH)
+    {
+        TestFlags &= ~(TEST_PRELOAD_CACHE1 | TEST_PRELOAD_CACHE2);
+    }
+
 #ifdef _DEBUG
     srand(pTestParams->RandomSeed);
 #endif

@@ -26,6 +26,7 @@ char help[] = "Command line: MEMTEST [<size> [<start>]] <options>\n"
               "/speed\t- show processor and memory speed;\n"
               "/readtwice - compare test data twice;\n"
               "/writethru - disable write-back caching;\n"
+              "/noprefetch - don't preload data to the cache;\n"
               "/preheat - perform memory preheat;\n"
               "/nocache - disable caching (not recommended);\n"
               "/nocheck - don't enable machine check interrupt;\n"
@@ -430,6 +431,10 @@ BOOL ProcessCommandLine(int argc, char * * argv, MEMTEST_STARTUP_PARAMS * pParam
         else if (IsOption(option, "ig*norexmm"))
         {
             pParams->Flags |= TEST_FLAGS_IGNORE_XMM;
+        }
+        else if (IsOption(option, "nopr*efetch"))
+        {
+            pParams->Flags |= TEST_FLAGS_NOPREFETCH;
         }
         else if (IsOption(option, "nola*rgepages"))
         {
