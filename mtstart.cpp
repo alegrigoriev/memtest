@@ -182,6 +182,7 @@ BOOL LoadPE(char * pFilename, PROTECTED_MODE_STARTUP_DATA * pStartup)
     return TRUE;
 }
 
+void InitInterruptTable(GATE far * pIDT);
 void ProtectedModeStart(PROTECTED_MODE_STARTUP_DATA * pStartup)
 {
     char huge * pTmp = new far char[0x1000 + sizeof PROTECTED_MODE_STARTUP_MEMORY];
@@ -192,6 +193,10 @@ void ProtectedModeStart(PROTECTED_MODE_STARTUP_DATA * pStartup)
         (PROTECTED_MODE_STARTUP_MEMORY far *)
         ( pTmp + (0xFFF & -long(GetFlatAddress(pTmp))));
     _fmemset( pAuxMemory, 0, sizeof *pAuxMemory);
+
+#ifdef _DEBUG_EXCEPTIONS
+    InitInterruptTable(pAuxMemory->IDT);
+#endif
     // Build starting page table.
     // The table consists of 3 pages - one is first level, two other -
     // second level for 8 MB space.
@@ -250,7 +255,8 @@ Offset  Size    Description
                    sizeof pAuxMemory->GDT - 1,
                    SEG_DESC_DATA);
     InitDescriptor(pAuxMemory->GDT[2], & pAuxMemory->IDT,
-                   8, //sizeof pAuxMemory->IDT - 1, // only NMI
+                   //8,
+                   sizeof pAuxMemory->IDT - 1, // only NMI
                    SEG_DESC_DATA);
     // code segment descriptor
     void far * tmp_ptr = NULL;
@@ -314,13 +320,21 @@ Offset  Size    Description
         mov     ah,0Dh
         INT     21h
 
+        // mask interrupt controller interrupts
+        mov     al,0xFF
+        out     0x21,al
+        nop
+        nop
+        out     0xA1,al
         // disable interrupts
         cli
         // switch to protected mode
+        push    bp
         mov     ax,8900h
         mov     bx,3830h    // redirect interrupts to int30-int40
         les     si,tmp_ptr
         INT     15h
+        pop     bp
         jc      no_pmode
         // enable paging
         __emit 0x66 __asm mov     ax,word ptr pdt_addr // mov eax, pdt_addr
@@ -338,4 +352,248 @@ no_pmode:
     return;
 }
 
+#ifdef _DEBUG_EXCEPTIONS
 
+const int screen_width = 80;
+const int screen_height = 25;
+
+// pointer to screen buffer in 32-bit address space
+WORD (* const screenbase)[screen_width]
+= (WORD (*)[screen_width]) ((11 *8L) <<16);
+
+int curr_row=24, curr_col; // current row and column on text mode display
+void my_puts(const char * str, BOOL IsErrMsg = FALSE,
+             WORD color_mask = 0x0700)
+{
+    static int error_row = 24;
+    WORD far * position = &screenbase[curr_row][curr_col];
+    unsigned char c;
+    while(1);
+    if (IsErrMsg && 0 == error_row)
+    {
+        error_row = screen_height;
+    }
+
+    while ((c = *str++) != 0)
+    {
+        if ('\r' == c)
+        {
+            curr_col = 0;
+            position = &screenbase[curr_row][0];
+            continue;
+        }
+
+        if ('\n' == c || curr_col >= screen_width)
+        {
+            // do scrolling or move cursor to the next line
+            curr_col = 0;
+            if (curr_row < screen_height - 1)
+            {
+                curr_row++;
+            }
+            else
+            {
+                memcpy(screenbase, &screenbase[1][0], (screen_height - 1) * sizeof screenbase[0]);
+                curr_row = screen_height - 1;
+            }
+            position = &screenbase[curr_row][0];
+            // clear the row
+            for (int i = 0; i < screen_width; i++)
+            {
+                position[i] = color_mask;
+            }
+            // make sure error messages are not gone off the screen
+            if (1 == error_row)
+            {
+                #if 0
+                my_puts("Press Enter to continue\r", FALSE, 0x8F00);    // blink
+                int key;
+                do {
+                    key = CheckForKey();
+                } while (key != 0x1c && key != 0x39);
+                do {
+                    key = CheckForKey();
+                } while (key != 0);
+                #endif
+                error_row = 0;
+                // clear the line again
+                for (int i = 0; i < screen_width; i++)
+                {
+                    position[i] = color_mask;
+                }
+            }
+            if (error_row != 0)
+            {
+                error_row--;
+            }
+
+            if ('\n' == c) continue;
+        }
+        *position = c | color_mask;
+        position++;
+        curr_col++;
+    }
+
+}
+
+void InitGate(GATE & g, WORD Selector, void (_far * Offset)(), WORD flags)
+{
+    g.offset_0_15 = WORD(Offset);
+    g.selector = Selector;
+    g.offset_16_31 = 0;
+    g.flags = flags;
+}
+
+static char buf[256];
+
+void __cdecl PrintException(const char * pFormat)
+{
+    DWORD * pArgs = (DWORD*) & pFormat;
+    #if 0
+    my_sprintf(buf, "\nEIP: %x, EFLAGS: %x, EAX: %x, EBX: %x, ECX: %x,\n"
+               "EDX: %x, ESI: %x, EDI: %x, EBP: %x\n",
+               pArgs[8], pArgs[10], pArgs[1], pArgs[2], pArgs[3], pArgs[4],
+               pArgs[5], pArgs[6], pArgs[7]);
+    my_puts(buf, FALSE, 0x0F00);
+    #endif
+    my_puts(pFormat, FALSE,0x8F00);
+}
+#define LOADDS __asm  mov ax, 3 *8 _asm mov ds,ax
+void __far NMIHandler()
+{
+    while(1);
+    my_puts("Non-Maskable Interrupt occured, probably memory parity error. Program halted", FALSE, 0x0F00);
+    do __asm hlt
+    while(1);
+}
+
+void __far MachineCheckHandler()
+{
+    while(1);
+    my_puts("Machine Check Exception occured, probably internal CPU error. Program halted", FALSE, 0x0F00);
+    do __asm hlt
+    while(1);
+}
+
+void __far DoubleFaultHandler()
+{
+    while(1);
+    my_puts("Double Fault Exception occured. Program halted", FALSE, 0x0F00);
+    do __asm hlt
+    while(1);
+}
+
+void __far SegmentNotPresentHandler()
+{
+    while(1);
+    my_puts("Segment Not Present Exception occured. Program halted", FALSE, 0x0F00);
+    do __asm hlt
+    while(1);
+}
+
+void __far UnexpectedExceptionWithCode()
+{
+    static DWORD _eip;
+    while(1);
+#if 0
+    __asm add     esp,4
+    __asm {
+        push    ebp
+        push    edi
+        push    esi
+        push    edx
+        push    ecx
+        push    ebx
+        push    eax
+    }
+#endif
+    PrintException("Unexpected exception occured, program halted");
+    do __asm hlt
+    while(1);
+}
+
+void __far PageFaultHandler()
+{
+    while(1);
+    static DWORD _eip;
+#if 0
+    __asm add     esp,4
+    __asm {
+        push    ebp
+        push    edi
+        push    esi
+        push    edx
+        push    ecx
+        push    ebx
+        push    eax
+    }
+#endif
+    PrintException("Page Fault occured, program halted");
+    do __asm hlt
+    while(1);
+}
+
+void __far UnexpectedException()
+{
+    static DWORD _eip;
+    while(1);
+#if 0
+    __asm {
+        push    ebp
+        push    edi
+        push    esi
+        push    edx
+        push    ecx
+        push    ebx
+        push    eax
+    }
+#endif
+    PrintException("Unexpected exception occured, program halted");
+    do __asm hlt
+    while(1);
+}
+
+#define DivideErrorHandler       UnexpectedException
+#define DebugExceptionHandler    UnexpectedException
+#define BreakHandler             UnexpectedException
+#define OverflowHandler          UnexpectedException
+#define BOUNDHandler              UnexpectedException
+#define InvalidOpcodeHandler       UnexpectedException
+#define DeviceNotAvailableHandler  UnexpectedException
+#define CoprocessorOverrunHandler  UnexpectedException
+#define InvalidTSSHandler          UnexpectedExceptionWithCode
+#define StackFaultHandler          UnexpectedExceptionWithCode
+#define GeneralProtectionHandler   UnexpectedExceptionWithCode
+//#define PageFaultHandler           UnexpectedExceptionWithCode
+#define ReservedHandler            UnexpectedExceptionWithCode
+#define FloatingPointHandler       UnexpectedException
+#define AlignmentHandler           UnexpectedExceptionWithCode
+
+void InitInterruptTable(GATE far * pIDT)
+{
+    InitGate(pIDT[0], 6 * 8, DivideErrorHandler, GATE_PRESENT | GATE_TRAP_GATE);
+    InitGate(pIDT[1], 6 * 8, DebugExceptionHandler, GATE_PRESENT | GATE_TRAP_GATE);
+    InitGate(pIDT[2], 6 * 8, NMIHandler, GATE_PRESENT | GATE_INTERRUPT_GATE);
+    InitGate(pIDT[3], 6 * 8, BreakHandler, GATE_PRESENT | GATE_TRAP_GATE);
+    InitGate(pIDT[4], 6 * 8, OverflowHandler, GATE_PRESENT | GATE_TRAP_GATE);
+    InitGate(pIDT[5], 6 * 8, BOUNDHandler, GATE_PRESENT | GATE_TRAP_GATE);
+    InitGate(pIDT[6], 6 * 8, InvalidOpcodeHandler, GATE_PRESENT | GATE_TRAP_GATE);
+    InitGate(pIDT[7], 6 * 8, DeviceNotAvailableHandler, GATE_PRESENT | GATE_TRAP_GATE);
+    InitGate(pIDT[8], 6 * 8, DoubleFaultHandler, GATE_PRESENT | GATE_INTERRUPT_GATE);
+    InitGate(pIDT[9], 6 * 8, CoprocessorOverrunHandler, GATE_PRESENT | GATE_TRAP_GATE);
+    InitGate(pIDT[10], 6 * 8, InvalidTSSHandler, GATE_PRESENT | GATE_TRAP_GATE);
+    InitGate(pIDT[11], 6 * 8, SegmentNotPresentHandler, GATE_PRESENT | GATE_INTERRUPT_GATE);
+    InitGate(pIDT[12], 6 * 8, StackFaultHandler, GATE_PRESENT | GATE_TRAP_GATE);
+    InitGate(pIDT[13], 6 * 8, GeneralProtectionHandler, GATE_PRESENT | GATE_TRAP_GATE);
+    InitGate(pIDT[14], 6 * 8, PageFaultHandler, GATE_PRESENT | GATE_TRAP_GATE);
+    InitGate(pIDT[15], 6 * 8, ReservedHandler, GATE_PRESENT | GATE_TRAP_GATE);
+    InitGate(pIDT[16], 6 * 8, FloatingPointHandler, GATE_PRESENT | GATE_TRAP_GATE);
+    InitGate(pIDT[17], 6 * 8, AlignmentHandler, GATE_PRESENT | GATE_TRAP_GATE);
+    InitGate(pIDT[18], 6 * 8, MachineCheckHandler, GATE_PRESENT | GATE_INTERRUPT_GATE);
+
+    for (int i = 19; i < 256; i++)
+    {
+        InitGate(pIDT[i], 6 * 8, UnexpectedException, GATE_PRESENT | GATE_INTERRUPT_GATE);   // non-present
+    }
+}
+#endif

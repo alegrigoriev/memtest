@@ -126,7 +126,7 @@ unsigned __int16 (*const screenbase)[screen_width]
 
 int curr_row=24, curr_col=0; // current row and column on text mode display
 
-char title[] = "MEMTEST by AleGr SoftWare, Copyright by Alexander Grigoriev, 1997\n";
+char title[] = MEMTEST_TITLE;
 
 /////////////////////////////////////////////////////////////
 // Function declarations
@@ -517,6 +517,55 @@ loop1:
         jg      loop1
         ret     8
     }
+}
+
+// The function makes a lot of real memory accesses
+// Since it makes consequtive accesses that do not
+// fall in one memory row, all accesses lead to full memory cycle
+// the memory must not be cached
+void PreheatMemory(void * addr, size_t memsize, size_t step)
+{
+    __asm {
+        mov     eax,[memsize]
+        sub     edx,edx
+        mov     ebx,[step]
+        div     ebx  // number of memory accesses in loop
+        mov     [memsize],eax
+        shr     ebx,2    // number of big loops
+loop2:
+        mov     ecx,[memsize]
+        mov     edx,[addr]
+loop1:
+        mov     eax,[edx]
+        add     edx,[step]
+        dec     ecx
+        jg      loop1
+        add     [addr],4
+        dec     ebx
+        jg      loop2
+    }
+}
+
+void DoPreheatMemory(void * TestStartVirtAddr, size_t MemoryToTestSize, size_t step,
+                     DWORD flags)
+{
+    if (0 == (flags & TEST_FLAGS_PREHEAT_MEMORY))
+    {
+        return;
+    }
+    // save old page attributes
+    DWORD OldAttrs = GetPageFlags(TestStartVirtAddr);
+
+    ModifyPageFlags(TestStartVirtAddr, MemoryToTestSize,
+                    PAGE_DIR_FLAG_NOCACHE, 0);
+
+    WriteBackAndInvalidate();
+
+    PreheatMemory(TestStartVirtAddr, MemoryToTestSize, step);
+
+    ModifyPageFlags(TestStartVirtAddr, MemoryToTestSize,
+                    OldAttrs & PAGE_DIR_FLAG_NOCACHE,
+                    (~OldAttrs) & PAGE_DIR_FLAG_NOCACHE);
 }
 
 // preload data to the cache, jumping from one to another
@@ -1870,14 +1919,14 @@ void Delay10ms()
 {
     int num1, num2;
     _outp(0x43, 4);
-    num2 = _inp(0x40);
-    num2 |= _inp(0x40) << 8;
+    num2 = 0xFF & _inp(0x40);
+    num2 |= (0xFF & _inp(0x40)) << 8;
 
     do {
         num1 = num2;
         _outp(0x43, 4);
-        num2 = _inp(0x40);
-        num2 |= _inp(0x40) << 8;
+        num2 = 0xFF & _inp(0x40);
+        num2 |= (0xFF & _inp(0x40)) << 8;
     } while (num2 <= num1);
 }
 
@@ -1891,88 +1940,9 @@ void Delay(int nDelay)
     }
 }
 
-#if 0
-void ChangeRefreshAndDelay(int delay, int refresh_multiply)
-{
-    int num1, old_refresh;
-    _outp(0x43, 0x44);  // timer channel 1
-    old_refresh = _inp(0x41);
-    old_refresh |= _inp(0x41) << 8;
-
-    do {
-        num1 = old_refresh;
-        _outp(0x43, 0x44);
-        old_refresh = _inp(0x41);
-        old_refresh |= _inp(0x41) << 8;
-    } while (old_refresh <= num1);
-    volatile DWORD * pProgram = (DWORD*) 0x400000;
-    volatile DWORD * pStack;
-    __asm mov pStack, esp;
-
-    // calculate page table checksum
-    // num2 - counter value
-    // set new refresh timer value
-    num1 *= refresh_multiply;
-    _outp(0x43,0x74);
-    _outp(0x41, char(num1));
-    _outp(0x41, char(num1 >> 8));
-
-    Delay(delay);
-    // restore previous refresh count
-    _outp(0x43,0x74);
-    _outp(0x41, char(old_refresh));
-    _outp(0x41, char(old_refresh >> 8));
-    // rewrite the program back to memory
-    for (; pProgram < pStack; pProgram++)
-    {
-        * pProgram += 0;
-    }
-    // check stack and page table integrity
-}
-#endif
-
 //__declspec(naked)
 void Reboot()
 {
-#if 0
-    static PSEUDO_DESC fptr = {0, 0xFFFF, NULL};
-    // copy the code to physical 0x400000 address
-    __asm {
-        // disable paging and
-        // disable protected mode (segments are still big!) CR0<- 0x60000010
-        mov     eax,0x60000010
-        mov     cr0,eax
-        // set CR2, CR3, CR4 registers to 0
-        xor     eax,eax
-        mov     CR2,eax
-        mov     CR3,eax
-        mov     CR4,eax
-        // set IDTR, LDTR, GDTR to 0:FFFF
-        lidt    fptr.len
-        lgdt    fptr.len
-        lldt    ax
-        // set general registers to 0
-        mov     ecx,eax
-        mov     ebx,eax
-        mov     ebp,eax
-        mov     edi,eax
-        mov     esi,eax
-        mov     esp,eax
-        // set data segment registers to 0
-        mov     ds,ax
-        mov     es,ax
-        mov     gs,ax
-        mov     fs,ax
-        mov     ss,ax
-        // set EDX to CPUID ret
-        mov     eax,1
-        cpuid
-        mov     edx,eax
-        mov     eax,0
-        // set warm boot flag
-        // jmp far 0xF000:0x0000FFF0
-    }
-#else
     // try to reset through port 92
     _outp(0x92, _inp(0x92) | 1);
     // then reset the processor using the keyboard controler
@@ -1983,7 +1953,6 @@ void Reboot()
     RESET_IDT();        // reset IDT to a single descriptor
     __asm INT   0xFF    // causes processor shutdown and reset
     while(1) __asm hlt;
-#endif
 }
 
 int CheckForKey()
@@ -2391,6 +2360,11 @@ void __stdcall MemtestEntry()
                                 0, PAGE_DIR_FLAG_NOCACHE);
             }
         }
+        else
+        {
+            // for 80386
+            flags &= ~TEST_FLAGS_PREHEAT_MEMORY;
+        }
 
         if (SpecifiedRowSize != 0)
         {
@@ -2409,24 +2383,31 @@ void __stdcall MemtestEntry()
                 TestDelay = long_delay;
             }
 
+            DoPreheatMemory(TestStartVirtAddr, MemoryToTestSize, 0x10000, flags);
             seed = DoRandomMemoryTest(TestStartVirtAddr, MemoryToTestSize,
                                       seed, 0x08080000, flags);
 
+            DoPreheatMemory(TestStartVirtAddr, MemoryToTestSize, 0x10000, flags);
             DoMemoryTestAlternatePattern(TestStartVirtAddr,
                                          MemoryToTestSize, flags | TEST_RUNNING0);
 
+            DoPreheatMemory(TestStartVirtAddr, MemoryToTestSize, 0x10000, flags);
             DoMemoryTestAlternatePattern(TestStartVirtAddr,
                                          MemoryToTestSize, flags | TEST_RUNNING1);
 
+            DoPreheatMemory(TestStartVirtAddr, MemoryToTestSize, 0x10000, flags);
             DoMemoryTestUniformPattern(TestStartVirtAddr,
                                        MemoryToTestSize, flags | TEST_ALL1);
 
+            DoPreheatMemory(TestStartVirtAddr, MemoryToTestSize, 0x10000, flags);
             DoMemoryTestUniformPattern(TestStartVirtAddr,
                                        MemoryToTestSize, flags | TEST_ALL0);
 
+            DoPreheatMemory(TestStartVirtAddr, MemoryToTestSize, 0x10000, flags);
             DoMemoryTestUniformPattern(TestStartVirtAddr,
                                        MemoryToTestSize, flags | TEST_ALL1);
 
+            DoPreheatMemory(TestStartVirtAddr, MemoryToTestSize, 0x10000, flags);
             DoMemoryTestUniformPattern(TestStartVirtAddr,
                                        MemoryToTestSize, flags | TEST_ALL0);
 

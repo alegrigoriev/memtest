@@ -16,8 +16,7 @@ BOOL IsV86();
 char fgetsbuf[30];
 #endif
 
-char title[] = "MEMTEST - PC memory test, Version 1.02, Feb 11, 1999. All Rights Reserved\n"
-               "Copyright 1997, 1998, 1999 Alexander Grigoriev (AleGr SoftWare), alegr@aha.ru";
+char title[] = MEMTEST_TITLE;
 char help[] = "Command line: MEMTEST [<size> [<start>]] <options>\n"
               "<size>\t- optional size of memory to test (in megabytes)\n"
               "<start>\t- optional address to start testing from (in megabytes)\n"
@@ -27,6 +26,7 @@ char help[] = "Command line: MEMTEST [<size> [<start>]] <options>\n"
               "/speed\t- show processor and memory speed;\n"
               "/readtwice - compare test data twice;\n"
               "/writethru - disable write-back caching;\n"
+              "/preheat - perform memory preheat;\n"
               "/nocache - disable caching (not recommended);\n"
               "/nocheck - don't enable machine check interrupt.\n"
               "\nFor more details see README.HTM\n"
@@ -129,22 +129,12 @@ inline BOOL IsBareDOS()
 
 void ResetFloppies()
 {
-#if 0
-    __asm {
-        mov     dl,0
-        mov     ah,0
-        INT     13h
-        mov     dl,1
-        mov     ah,0
-        INT     13h
+    __asm   {
+        mov     dx,0x3F2    // diskette digital output register
+        mov     al,0
+        // turn motors off
+        out    dx,al
     }
-#else
-    __asm   mov     dx,0x3F2
-    __asm   mov     al,0
-    __asm   out    dx,al
-    //_out(0x3F2, 0);    // diskette digital output register,
-    // turn motors off
-#endif
 }
 
 BOOL ProcessCommandLine(int argc, char * * argv, MEMTEST_STARTUP_PARAMS * pParams)
@@ -221,6 +211,10 @@ BOOL ProcessCommandLine(int argc, char * * argv, MEMTEST_STARTUP_PARAMS * pParam
         else if (0 == stricmp(option, "nocache"))
         {
             pParams->Flags |= TEST_FLAGS_NOCACHE;
+        }
+        else if (0 == stricmp(option, "preheat"))
+        {
+            pParams->Flags |= TEST_FLAGS_PREHEAT_MEMORY;
         }
         else if (0 == stricmp(option, "speed"))
         {

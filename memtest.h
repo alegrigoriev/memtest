@@ -1,4 +1,13 @@
 // memtest.h
+
+#define MEMTEST_VERSION "1.03"
+#define MEMTEST_DATE    "March 28, 1999"
+#define MEMTEST_COPYRIGHT "Copyright 1997-1999 Alexander Grigoriev (AleGr SoftWare), alegr@aha.ru"
+#define MEMTEST_TITLE   "MEMTEST - PC memory test, Version " MEMTEST_VERSION \
+            ", " MEMTEST_DATE \
+            ". All Rights Reserved\n" \
+               MEMTEST_COPYRIGHT "\n"
+
 #define TEST_ALL1                  0x00000001UL
 #define TEST_ALL0                  0x00000002UL
 #define TEST_PRELOAD_CACHE1        0x00000004UL // preload L1 cache
@@ -18,6 +27,8 @@
 #define TEST_FLAGS_WRITETHRU       0x00008000UL  // disable writeback cache
 #define TEST_FLAGS_NOCACHE         0x00010000UL
 #define TEST_NO_MACHINE_CHECK      0x00020000UL
+#define TEST_FLAGS_PREHEAT_MEMORY  0x00040000UL  // preheat memory chips
+                                    // by placing big load on them
 
 #define PAGE_DIR_FLAG_PRESENT       1
 #define PAGE_DIR_FLAG_WRITABLE      2
@@ -59,7 +70,9 @@
 
 #define GATE_PRESENT             0x8000
 #define GATE_INTERRUPT_GATE      0x0E00
+#define GATE_INTERRUPT_GATE16    0x0600
 #define GATE_TRAP_GATE           0x0F00
+#define GATE_TRAP_GATE16         0x0700
 
 struct _TSS
 {
@@ -101,7 +114,7 @@ struct _TSS
     WORD dummy1;
     WORD dummy0;
     WORD IOMapOffset;
-    BYTE IOMap[4];
+    BYTE IOMap[128];
 };
 
 struct DESCRIPTOR
