@@ -28,8 +28,10 @@ char help[] = "Command line: MEMTEST [<size> [<start>]] <options>\n"
               "/writethru - disable write-back caching;\n"
               "/preheat - perform memory preheat;\n"
               "/nocache - disable caching (not recommended);\n"
-              "/nocheck - don't enable machine check interrupt.\n"
-              "/fastdetect - use fast memory size detection.\n"
+              "/nocheck - don't enable machine check interrupt;\n"
+              "/fastdetect - use fast memory size detection;\n"
+              "/ignorexmm - start even if HIMEM.SYS is loaded\n"
+              "        (if Windows ME recovery disk is booted).\n"
               "\nFor more details see README.HTM\n"
               "Check http://www.home.earthlink.net/~alegr/download/index.htm\n"
               " for program updates."
@@ -120,10 +122,10 @@ NoXms:
     return FALSE;
 }
 
-inline BOOL IsBareDOS()
+inline BOOL IsBareDOS(BOOL IgnoreXmm)
 {
     if (IsWindowsRunning() || IsEmm386Present()
-        || IsHimemPresent() || IsV86())
+        || (! IgnoreXmm && IsHimemPresent()) || IsV86())
         return FALSE;
     else
         return TRUE;
@@ -423,6 +425,10 @@ BOOL ProcessCommandLine(int argc, char * * argv, MEMTEST_STARTUP_PARAMS * pParam
         {
             pParams->Flags |= TEST_FLAGS_FASTDETECT;
         }
+        else if (IsOption(option, "ig*norexmm"))
+        {
+            pParams->Flags |= TEST_FLAGS_IGNORE_XMM;
+        }
         else if (IsOption(option, "nous*blegacy"))
         {
             pParams->Flags |= TEST_NO_USB_LEGACY;
@@ -477,12 +483,12 @@ int _cdecl main(int argc, char *argv[])
     printf("Going to check for bare DOS...(press Enter)");
     fgets(fgetsbuf, sizeof fgetsbuf, stdin);
 #endif
-    if ( ! IsBareDOS())
+    if ( ! IsBareDOS(0 != (Startup.msp.Flags & TEST_FLAGS_IGNORE_XMM)))
     {
         fputs("\nError: Can't run - memory managers detected.\n"
               "\tThe program can be run only from bare DOS.\n"
               "\tTo start bare DOS session, restart the computer\n"
-              "\tand press Shift-F5 when \"Starting Windows95...\" message appears,\n"
+              "\tand press Shift-F5 when \"Starting Windows 98...\" message appears,\n"
               "or boot from a diskette with system files only."
               "\tType MEMTEST /? for help.\n", stderr);
         return -1;
@@ -498,13 +504,6 @@ int _cdecl main(int argc, char *argv[])
     {
         fputs("Error: The Program requires i386 or higher CPU type\n", stderr);
         return -1;
-    }
-
-    if (CpuModel < 586)
-    {
-        fputs("Warning: The program is designed to test 64 bit data paths,\n"
-              "\tand may not be worth running on systems with 32-bit memory bus.\n", stderr);
-        // continue execution anyway
     }
 
     PROTECTED_MODE_STARTUP_DATA Startup;
