@@ -17,10 +17,7 @@ extern char fgetsbuf[30];
 
 BOOL IsV86()
 {
-#ifdef _DEBUG
-    printf("Checking for V86, press Enter to continue...");
-    fgets(fgetsbuf, sizeof fgetsbuf, stdin);
-#endif
+    PAUSE("Checking for V86, press Enter to continue...");
     DWORD msw = 0;
     __asm SMSW msw;
     return WORD(msw) & 1; // if PE bit in MSW (CR0) is set, it is V86 mode
@@ -149,6 +146,11 @@ BOOL LoadPE(char * pFilename, PROTECTED_MODE_STARTUP_DATA * pStartup)
 
     pStartup->ProgramEntry = PE_opt_header.EntryPointRVA
                              + PE_opt_header.ImageBase;
+
+    TRACE("ImageBase=%lX, EP RVA=%lX, ProgramEntry=%lX\n",
+          PE_opt_header.ImageBase, PE_opt_header.EntryPointRVA,
+          pStartup->ProgramEntry);
+
     pStartup->ProgramSize = PE_opt_header.ImageSize;
     pStartup->msp.ProgramTop = PE_opt_header.ImageBase
                                + PE_opt_header.ImageSize;

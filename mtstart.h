@@ -103,3 +103,11 @@ struct SECTION_HEADER
 BOOL LoadPE(char * pFilename, struct PROTECTED_MODE_STARTUP_DATA * pStartup);
 
 void ProtectedModeStart(struct PROTECTED_MODE_STARTUP_DATA * pStartup);
+
+#ifdef _DEBUG
+#define TRACE printf
+#define PAUSE(t) printf(t); fgets(fgetsbuf, sizeof fgetsbuf, stdin)
+#else
+#define TRACE 1 ? (void) 0 : (void)
+#define PAUSE(t)
+#endif

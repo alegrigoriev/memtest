@@ -46,10 +46,8 @@ extern "C" long cpu_type();
 BOOL IsWindowsRunning()
 {
     // check for Windows running
-#ifdef _DEBUG
-    printf("Checking for Windows, press Enter to continue...");
-    fgets(fgetsbuf, sizeof fgetsbuf, stdin);
-#endif
+    PAUSE("Checking for Windows, press Enter to continue...");
+
     __asm {
         mov     ax, 160Ah
         int     2Fh
@@ -68,10 +66,7 @@ char EMS_FILENAME[] = "EMMXXXX0";
 
 BOOL IsEmm386Present()
 {
-#ifdef _DEBUG
-    printf("Checking for EMM386, press Enter to continue...");
-    fgets(fgetsbuf, sizeof fgetsbuf, stdin);
-#endif
+    PAUSE("Checking for EMM386, press Enter to continue...");
     // check for EMS386 loaded
     __asm {
         SUB     CX,CX
@@ -110,10 +105,8 @@ NoEmm:
 
 BOOL IsHimemPresent()
 {
-#ifdef _DEBUG
-    printf("Checking for HIMEM, press Enter to continue...");
-    fgets(fgetsbuf, sizeof fgetsbuf, stdin);
-#endif
+    PAUSE("Checking for HIMEM, press Enter to continue...");
+
     __asm {
         mov     ax, 0x4300
         int     0x2f
@@ -274,10 +267,6 @@ inline void GetCursorPosition(MEMTEST_STARTUP_PARAMS * pParams)
         mov     row,dh
     }
     pParams->CursorRow = row;
-#ifdef _DEBUG
-    printf("Cursor row=%d(press Enter)", row);
-    fgets(fgetsbuf, sizeof fgetsbuf, stdin);
-#endif
 }
 
 char const * IsOption(char const * arg, char const * option)
@@ -533,10 +522,9 @@ int _cdecl main(int argc, char *argv[])
         fprintf(stderr, "Command Line Error in or after \"%s\", type MEMTEST /? for help", argv[ArgResult]);
         return -1;
     }
-#ifdef _DEBUG
-    printf("Going to check for bare DOS...(press Enter)");
-    fgets(fgetsbuf, sizeof fgetsbuf, stdin);
-#endif
+
+    PAUSE("Going to check for bare DOS...(press Enter)");
+
     if ( ! IsBareDOS(0 != (Startup.msp.m_Flags & TEST_FLAGS_IGNORE_XMM)))
     {
         fputs("\nError: Can't run - memory managers detected.\n"
@@ -548,10 +536,8 @@ int _cdecl main(int argc, char *argv[])
         return -1;
     }
 
-#ifdef _DEBUG
-    printf("Going to check CPU type...(press Enter)");
-    fgets(fgetsbuf, sizeof fgetsbuf, stdin);
-#endif
+    PAUSE("Going to check CPU type...(press Enter)");
+
     long CpuType = cpu_type();     // upper word - feature bits
     int CpuModel = WORD(CpuType);
     if (CpuModel < 386)
@@ -570,20 +556,16 @@ int _cdecl main(int argc, char *argv[])
         SetRTCDefaults();
     }
 
-#ifdef _DEBUG
-    printf("Going to load PE module...(press Enter)");
-    fgets(fgetsbuf, sizeof fgetsbuf, stdin);
-#endif
+    PAUSE("Going to load PE module...(press Enter)");
+
     if ( argc < 1 || !LoadPE(argv[0], & Startup))
     {
         fputs("\nUnable to load the program\n", stderr);
         return -1;
     }
 
-#ifdef _DEBUG
-    printf("Going to reset FDC...(press Enter)");
-    fgets(fgetsbuf, sizeof fgetsbuf, stdin);
-#endif
+    //PAUSE("Going to reset FDC...(press Enter)");
+
     ResetFloppies();
 
     if (Startup.msp.m_Flags & TEST_NO_USB_LEGACY)
@@ -593,10 +575,8 @@ int _cdecl main(int argc, char *argv[])
 
     GetCursorPosition( & Startup.msp);
 
-#ifdef _DEBUG
-    printf("Going to enter protected mode...(press Enter)");
-    fgets(fgetsbuf, sizeof fgetsbuf, stdin);
-#endif
+    PAUSE("Going to enter protected mode...(press Enter)");
+
     ProtectedModeStart( & Startup);
     // if the program successfully started, execution should not return here
     fputs("\nUnable to enter protected mode\n", stderr);
