@@ -236,12 +236,12 @@ void my_puts(const char * str, BOOL IsErrMsg = FALSE,
              unsigned __int16 color_mask = 0x0700)
 {
 #ifdef STANDALONE
-    static int error_row = 24;
+    static int error_row = 0;
     unsigned __int16 * position = &screenbase[curr_row][curr_col];
     unsigned char c;
     if (IsErrMsg && 0 == error_row)
     {
-        error_row = screen_height;
+        error_row = screen_height-1;
     }
 
     while ((c = *str++) != 0)
