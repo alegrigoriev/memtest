@@ -1,0 +1,93 @@
+# Microsoft Visual C++ generated build script - Do not modify
+
+PROJ = MEMTST1
+DEBUG = 0
+PROGTYPE = 6
+CALLER = 
+ARGS = 
+DLLS = 
+D_RCDEFINES = -d_DEBUG
+R_RCDEFINES = -dNDEBUG
+ORIGIN = MSVC
+ORIGIN_VER = 1.00
+PROJPATH = C:\MYPROJ~1\MEMTEST\
+USEMFC = 0
+CC = cl
+CPP = cl
+CXX = cl
+CCREATEPCHFLAG = 
+CPPCREATEPCHFLAG = 
+CUSEPCHFLAG = 
+CPPUSEPCHFLAG = 
+FIRSTC =             
+FIRSTCPP = MTSTART.CPP 
+RC = rc
+CFLAGS_D_DEXE = /nologo /f- /G3 /FPi87 /Zp1 /W3 /Gf /Zi /AS /O1 /Ob1 /D "_DEBUG" /D "_DOS" /FR /Fd"MEMTST1.PDB"
+CFLAGS_R_DEXE = /nologo /Gs /G3 /FPi87 /Zp1 /Gy /W3 /Gf /AS /Ox /Ob1 /D "NDEBUG" /D "_DOS" /FR 
+LFLAGS_D_DEXE = /NOLOGO /NOI /STACK:5120 /ONERROR:NOEXE /CO /KNOWEAS
+LFLAGS_R_DEXE = /NOLOGO /NOI /STACK:5120 /ONERROR:NOEXE /KNOWEAS
+LIBS_D_DEXE = slibc7 oldnames 
+LIBS_R_DEXE = slibc7 oldnames 
+RCFLAGS = /nologo
+RESFLAGS = /nologo
+RUNFLAGS = 
+OBJS_EXT = CPUTYPE.OBJ 
+LIBS_EXT = 
+!if "$(DEBUG)" == "1"
+CFLAGS = $(CFLAGS_D_DEXE)
+LFLAGS = $(LFLAGS_D_DEXE)
+LIBS = $(LIBS_D_DEXE)
+MAPFILE = nul
+RCDEFINES = $(D_RCDEFINES)
+!else
+CFLAGS = $(CFLAGS_R_DEXE)
+LFLAGS = $(LFLAGS_R_DEXE)
+LIBS = $(LIBS_R_DEXE)
+MAPFILE = nul
+RCDEFINES = $(R_RCDEFINES)
+!endif
+!if [if exist MSVC.BND del MSVC.BND]
+!endif
+SBRS = MTSTART.SBR \
+		MTSTART1.SBR
+
+
+CPUTYPE_DEP = 
+
+MTSTART_DEP = c:\myproj~1\memtest\mtstart.h \
+	c:\myproj~1\memtest\memtest.h
+
+
+MTSTART1_DEP = c:\myproj~1\memtest\mtstart.h \
+	c:\myproj~1\memtest\memtest.h
+
+
+all:	$(PROJ).EXE $(PROJ).BSC
+
+MTSTART.OBJ:	MTSTART.CPP $(MTSTART_DEP)
+	$(CPP) $(CFLAGS) $(CPPCREATEPCHFLAG) /c MTSTART.CPP
+
+MTSTART1.OBJ:	MTSTART1.CPP $(MTSTART1_DEP)
+	$(CPP) $(CFLAGS) $(CPPUSEPCHFLAG) /c MTSTART1.CPP
+
+$(PROJ).EXE::	MTSTART.OBJ MTSTART1.OBJ $(OBJS_EXT) $(DEFFILE)
+	echo >NUL @<<$(PROJ).CRF
+MTSTART.OBJ +
+MTSTART1.OBJ +
+$(OBJS_EXT)
+$(PROJ).EXE
+$(MAPFILE)
+c:\progra~1\msvc\lib\+
+$(LIBS)
+$(DEFFILE);
+<<
+	link $(LFLAGS) @$(PROJ).CRF
+
+run: $(PROJ).EXE
+	$(PROJ) $(RUNFLAGS)
+
+
+$(PROJ).BSC: $(SBRS)
+	bscmake @<<
+/o$@ $(SBRS)
+<<
