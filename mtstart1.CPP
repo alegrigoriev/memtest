@@ -137,6 +137,96 @@ void ResetFloppies()
     }
 }
 
+void DisableUsbLegacy(MEMTEST_STARTUP_PARAMS * pParams)
+{
+    // find PCI device, vendor ID=0x8086, device ID=0x7113
+    WORD DevNum;
+    WORD IOAddr;
+    __asm {
+        push    si
+        mov     ax,0xB102
+        mov     dx,0x8086
+        mov     cx,0x7113
+        mov     si,0
+        INT     0x1A
+        pop     si
+        JNC     device_found
+        push    si
+        mov     ax,0xB102
+        mov     dx,0x8086
+        mov     cx,0x7030
+        mov     si,0
+        INT     0x1A
+        pop     si
+        JC      device_not_found1
+device_found:
+        mov DevNum,bx
+    }
+
+    if ((DevNum & 7) != 3)
+    {
+        // function number should be 3
+        return;
+    }
+    // read base address
+    __asm {
+        push    di
+        mov     ax,0xB10A
+        mov     bx,DevNum
+        mov     di,0x40
+        INT     0x1A
+        pop     di
+device_not_found1:
+        jc      usb_device_not_found1
+        mov     IOAddr,cx
+    }
+    // global enable register offset=0x20
+    pParams->SMIEAddr = 0x20 + (IOAddr & ~0x3F);
+
+    WORD UsbLegacySupportReg;
+    __asm {
+        push    si
+        mov     ax,0xB102
+        mov     dx,0x8086
+        mov     cx,0x7112
+        mov     si,0
+        INT     0x1A
+        pop     si
+        JC      usb_device_not_found1
+
+        mov     DevNum,bx
+        // read base address
+        push    di
+        mov     ax,0xB10A
+        mov     bx,DevNum
+        mov     di,0x20
+        INT     0x1A
+        pop     di
+usb_device_not_found1:
+        jc      usb_device_not_found
+        mov     IOAddr,cx
+        push    di
+        mov     ax,0xB109
+        mov     bx,DevNum
+        mov     di,0xC0
+        INT     0x1A
+        pop     di
+        mov     UsbLegacySupportReg,cx
+
+        push    di
+        mov     cx,UsbLegacySupportReg
+        and     cx,~0x10
+        mov     ax,0xB10C
+        mov     bx,DevNum
+        mov     di,0xC0
+        INT     0x1A
+        pop     di
+    }
+
+usb_device_not_found:
+    return;
+}
+
 void CheckForTestRerun()
 {
     BYTE AlarmS = ReadRTCReg(RTC_SECOND_ALARM);
@@ -258,6 +348,10 @@ BOOL ProcessCommandLine(int argc, char * * argv, MEMTEST_STARTUP_PARAMS * pParam
         {
             pParams->Flags |= TEST_NO_MACHINE_CHECK;
         }
+        else if (0 == stricmp(option, "nousblegacy"))
+        {
+            pParams->Flags |= TEST_NO_USB_LEGACY;
+        }
         else if (0 == stricmp(option, "passcount"))
         {
             char * last;
@@ -371,6 +465,11 @@ int _cdecl main(int argc, char *argv[])
     fgets(fgetsbuf, sizeof fgetsbuf, stdin);
 #endif
     ResetFloppies();
+
+    if (Startup.msp.Flags & TEST_NO_USB_LEGACY)
+    {
+        DisableUsbLegacy( & Startup.msp);
+    }
 
 #ifdef _DEBUG
     printf("Going to enter protected mode...(press Enter)");

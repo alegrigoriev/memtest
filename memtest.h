@@ -29,6 +29,8 @@
 #define TEST_NO_MACHINE_CHECK      0x00020000UL
 #define TEST_FLAGS_PREHEAT_MEMORY  0x00040000UL  // preheat memory chips
                                     // by placing big load on them
+#define TEST_NO_USB_LEGACY         0x00080000UL
+
 // test results:
 #define TEST_RESULT_SUCCESS         0x60
 #define TEST_RESULT_CTRL_ALT_DEL    0x61
@@ -187,6 +189,7 @@ struct MEMTEST_STARTUP_PARAMS
     DWORD RandomSeed;
     DWORD Flags;
     WORD PassCount;
+    WORD SMIEAddr;     // address of SMI Global Enable register in I/O space
 };
 
 struct PROTECTED_MODE_STARTUP_DATA

@@ -188,6 +188,13 @@ void ProtectedModeStart(PROTECTED_MODE_STARTUP_DATA * pStartup)
     char huge * pTmp = new far char[0x1000 + sizeof PROTECTED_MODE_STARTUP_MEMORY];
     if (NULL == pTmp) return;   // unable to start
 
+    // disable USB legacy SMI interrupt
+    if (pStartup->msp.SMIEAddr != NULL)
+    {
+        _outpw(pStartup->msp.SMIEAddr,
+               _inpw(pStartup->msp.SMIEAddr) & ~1);
+    }
+
     // init pAuxMemory to page-aligned address and zero it
     PROTECTED_MODE_STARTUP_MEMORY far * pAuxMemory =
         (PROTECTED_MODE_STARTUP_MEMORY far *)
