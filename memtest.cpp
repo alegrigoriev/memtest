@@ -1556,7 +1556,7 @@ error12a:
 }
 
 void WriteTestData(char * addr, size_t size,
-                   DWORD pattern,
+                   DWORD pattern1, DWORD pattern2,
                    DWORD flags)
 {
     while (size != 0)
@@ -1588,26 +1588,29 @@ void WriteTestData(char * addr, size_t size,
                     PreloadCache(addr, curr_size);
                 }
 
-                if (flags & (TEST_RUNNING1 | TEST_RUNNING0))
+                if (flags & (TEST_ALL0 | TEST_ALL1))
                 {
-                    FillMemoryPattern(addr, curr_size, pattern,
-                                      ~pattern);
+                    FillMemoryPattern(addr, curr_size, pattern1);
                 }
                 else
                 {
-                    FillMemoryPattern(addr, curr_size, pattern);
+                    FillMemoryPattern(addr, curr_size, pattern1,
+                                      pattern2);
                 }
 
                 addr += curr_size;
                 row_size -= curr_size;
             }
-            pattern = ~pattern;
+            DWORD tmp = pattern1;
+            pattern1 = pattern2;
+            pattern2 = tmp;
         }
     }
 }
 
 void CompareTestData(char * addr, size_t size,
-                     DWORD pattern, DWORD new_pattern,
+                     DWORD pattern1, DWORD pattern2,
+                     DWORD new_pattern1, DWORD new_pattern2,
                      DWORD flags)
 {
     if(flags & TEST_SEESAW)
@@ -1655,31 +1658,38 @@ void CompareTestData(char * addr, size_t size,
                     while(1);
                 }
 #endif
-                CompareMemory(addr, row_size, pattern);
+                CompareMemory(addr, row_size, pattern1);
             }
             else
             {
                 if (flags & TEST_REPLACE)
                 {
-                    CompareMemoryPatternAndReplace(addr, row_size, pattern, ~pattern,
-                                                   new_pattern, ~new_pattern);
+                    CompareMemoryPatternAndReplace(addr, row_size, pattern1, pattern2,
+                                                   new_pattern1, new_pattern2);
                 }
                 else
                 {
-                    CompareMemoryPattern(addr, row_size, pattern, ~pattern);
+                    CompareMemoryPattern(addr, row_size, pattern1, pattern2);
                 }
             }
 
             addr += row_size;
             test_size -= row_size;
-            pattern = ~pattern;
-            new_pattern = ~new_pattern;
+
+            DWORD tmp = pattern1;
+            pattern1 = pattern2;
+            pattern2 = tmp;
+
+            tmp = new_pattern1;
+            new_pattern1 = new_pattern2;
+            new_pattern2 = tmp;
         }
     }
 }
 
 void CompareTestDataBackward(char * addr, size_t size,
-                             DWORD pattern, DWORD new_pattern,
+                             DWORD pattern1, DWORD pattern2,
+                             DWORD new_pattern1, DWORD new_pattern2,
                              DWORD flags)
 {
     if(flags & TEST_SEESAW)
@@ -1697,8 +1707,13 @@ void CompareTestDataBackward(char * addr, size_t size,
 #endif
     if (0 == ((size / MemoryRowSize) & 1))
     {
-        pattern = ~pattern;
-        new_pattern = ~new_pattern;
+        DWORD tmp = pattern1;
+        pattern1 = pattern2;
+        pattern2 = tmp;
+
+        tmp = new_pattern1;
+        new_pattern1 = new_pattern2;
+        new_pattern2 = tmp;
     }
 
     addr += size;
@@ -1737,24 +1752,29 @@ void CompareTestDataBackward(char * addr, size_t size,
                     while(1);
                 }
 #endif
-                CompareMemoryBackward(addr, row_size, pattern);
+                CompareMemoryBackward(addr, row_size, pattern1);
             }
             else
             {
                 if (flags & TEST_REPLACE)
                 {
-                    CompareMemoryPatternBackwardAndReplace(addr, row_size, pattern, ~pattern,
-                                                           new_pattern, ~new_pattern);
+                    CompareMemoryPatternBackwardAndReplace(addr, row_size, pattern1, pattern2,
+                                                           new_pattern1, new_pattern2);
                 }
                 else
                 {
-                    CompareMemoryPatternBackward(addr, row_size, pattern, ~pattern);
+                    CompareMemoryPatternBackward(addr, row_size, pattern1, pattern2);
                 }
             }
 
             test_size -= row_size;
-            pattern = ~pattern;
-            new_pattern = ~new_pattern;
+            DWORD tmp = pattern1;
+            pattern1 = pattern2;
+            pattern2 = tmp;
+
+            tmp = new_pattern1;
+            new_pattern1 = new_pattern2;
+            new_pattern2 = tmp;
         }
     }
 }
@@ -1974,7 +1994,7 @@ void DoMemoryTestAlternatePattern(char * addr, size_t _size,
         //
         if (15 == repeat)
         {
-            WriteTestData(addr, _size, pattern, flags);
+            WriteTestData(addr, _size, pattern, ~pattern, flags);
         }
 #if defined(MAKEERROR) && defined (_DEBUG)
         // insert random error
@@ -2015,9 +2035,9 @@ void DoMemoryTestAlternatePattern(char * addr, size_t _size,
 
         if (flags & TEST_READ_TWICE)
         {
-            CompareTestData(addr, _size, pattern, 0, flags);
+            CompareTestData(addr, _size, pattern, ~pattern, 0, 0, flags);
         }
-        CompareTestData(addr, _size, pattern, ~pattern,
+        CompareTestData(addr, _size, pattern, ~pattern, ~pattern, pattern,
                         flags | TEST_REPLACE);
 
         CheckForKey();
@@ -2060,11 +2080,11 @@ void DoMemoryTestAlternatePattern(char * addr, size_t _size,
         // check test data
         if (flags & TEST_READ_TWICE)
         {
-            CompareTestDataBackward(addr, _size, ~pattern, 0, flags);
+            CompareTestDataBackward(addr, _size, ~pattern, pattern, 0, 0, flags);
             CheckForKey();
         }
-        CompareTestDataBackward(addr, _size, ~pattern,
-                                _rotr(pattern, 1), TEST_REPLACE | flags);
+        CompareTestDataBackward(addr, _size, ~pattern, pattern,
+                                _rotr(pattern, 1), ~_rotr(pattern, 1), TEST_REPLACE | flags);
 
     }
 }
@@ -2097,7 +2117,7 @@ void DoMemoryTestUniformPattern(char * addr, size_t _size,
     my_sprintf(buf, "Pattern: %X%X", pattern, pattern);
     my_puts(buf, FALSE);
 
-    WriteTestData(addr, _size, pattern, flags);
+    WriteTestData(addr, _size, pattern, pattern, flags);
 
 #if defined(MAKEERROR) && defined (_DEBUG)
 // insert random error
@@ -2136,10 +2156,10 @@ void DoMemoryTestUniformPattern(char * addr, size_t _size,
         WriteBackAndInvalidate();
     }
 
-    CompareTestData(addr, _size, pattern, 0, flags);
+    CompareTestData(addr, _size, pattern, pattern, 0, 0, flags);
     if (flags & TEST_READ_TWICE)
     {
-        CompareTestData(addr, _size, pattern, 0, flags);
+        CompareTestData(addr, _size, pattern, pattern, 0, 0, flags);
     }
 }
 
