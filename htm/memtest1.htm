@@ -3,50 +3,48 @@
 	<head>
 		<title></title>
 		<meta http-equiv="Content-Type" content="text/html; charset=windows-1251">
-		<meta name="GENERATOR" content="Microsoft FrontPage 4.0">
+		<meta content="Microsoft FrontPage 4.0" name="GENERATOR">
 	</head>
-	<body bgcolor="#ffffff">
-		<p>
-			AleGr MEMTEST is a program for testing DRAM (main memory) of PC-compatible 
+	<body bgColor="#ffffff">
+		<p>AleGr MEMTEST is a program for testing DRAM (main memory) of PC-compatible 
 			computers built on Intel 386 or higher processor. The version 2.0 is now able 
 			to run under Windows.</p>
-		<P>Some of older programs for memory testing were written for cacheless 
-			processors.&nbsp; This program is written with knowledge of system bus, cache 
-			and main memory of 80486, Pentium and Pentium Pro (Pentium II) processors. Test 
-			patterns and access sequences used by the program are designed to test burst 
-			transfers between CPU and L2 cache and/or memory. Such transfers occur most of 
-			the time in real applications.</P>
+		<P>Some of older programs for memory testing were written for cacheless processors 
+			and required to disable the cache, when used on modern computers.&nbsp; This 
+			program is designed to run on the processors with memory cache, and takes into 
+			account how&nbsp;the system bus, cache and main memory of Pentium and Pentium 
+			Pro (Pentium II, III, 4) processors work. Test patterns and access sequences 
+			used by the program are designed to test burst transfers between CPU and L2 
+			cache and/or memory, because such transfers occur most of the time in real 
+			applications. It also tests some special access cycles, such as locked 
+			read-modify-write.</P>
 		<P>Maximum size of memory the program is able to test is 3 gigabytes under DOS and 
 			less than 2 gigabytes under Windows. If you have 4 GB or more, you can start 
 			several test sessions under Windows, to cover all the memory.</P>
 		<p>The program can be run under "bare" DOS session, and under Windows 98, Windows 
-			ME, Windows 2000, Windows XP. It may work under Windows NT 4.0, as well, but 
-			has never been tested.</p>
+			ME, Windows 2000, Windows XP. It may work under Windows NT 4.0 as well, but has 
+			never been tested.</p>
 		<P>The program runs differently under DOS and Windows.</P>
 		<H3 align="center">Licence terms</H3>
-		<P align="left">The program is free for personal (non-business) use. For business 
-			use, send email to <A href="mailto:alegr@earthlink.net">alegr@earthlink.net</A> 
+		<P align="left">The MEMTEST version 2.0 program is free for personal (non-business) 
+			use. For business use, send email to <A href="mailto:alegr@earthlink.net">alegr@earthlink.net</A> 
 			for information about buing a license and support. Source code can also be 
 			purchased.</P>
-		<P align="left">
-			WARNING: There is no guarantee of any kind. On some low-power systems, the 
-			program may cause excessive current consumption, and trigger overcurrent 
-			protection or cause permanent damage. When the program is run under Windows, it 
-			can cause a marginally stable&nbsp;system to crash with possible loss of data 
-			or OS damage.</P>
+		<P align="left">WARNING: There is no guarantee of any kind. On some low-power 
+			systems, the program may cause excessive current consumption, and trigger 
+			overcurrent protection or cause permanent damage. When the program is run under 
+			Windows, it can cause a marginally stable&nbsp;system to crash with possible 
+			loss of data or OS damage.</P>
 		<H3 align="center">Running the program under "bare" DOS</H3>
-		<P>
-			"Bare" DOS means&nbsp;"real mode" DOS without any memory managers, such as 
-			HIMEM.SYS and EMM386.EXE.</P>
+		<P>"Bare" DOS means&nbsp;"real mode" DOS without any memory managers, such as 
+			HIMEM.SYS and EMM386.EXE. Version 2.0 can now start if HIMEM.SYS is present.</P>
 		<P><STRONG>If you run Windows 95:</STRONG></P>
-		<P>
-			To start a bare DOS session, restart the computer and press <font face="Times New Roman">
+		<P>To start a bare DOS session, restart the computer and press <font face="Times New Roman">
 				<kbd>Shift+F5</kbd></font> when "<strong>Starting Windows 95...</strong>" 
 			message appears. You can also boot from a floppy.</FONT>
 		</P>
 		<P><STRONG>If you run Windows&nbsp;98:</STRONG></P>
-		<P>
-			For Windows 98 bare DOS session, press and hold <kbd>Ctrl</kbd> when OS begins 
+		<P>For Windows 98 bare DOS session, press and hold <kbd>Ctrl</kbd> when OS begins 
 			booting (just after BIOS detected all disk drives). Windows 98 boot menu will 
 			appear. Press <font face="Times New Roman"><kbd>Shift+F5</kbd> to start DOS. You 
 				can also boot from a floppy.</font></P>
@@ -56,7 +54,8 @@
 			command line option.</P>
 		<P><STRONG>If you run Windows 2000 or XP:</STRONG></P>
 		<P>Windows 2000 and XP cannot boot into DOS. You will need to boot from a floppy. 
-			You can create a boot disk during floppy format.</P>
+			You can create a boot disk when you format a floppy. You may need to use 
+			/ignorexmm command line switch when you start the program.</P>
 		<p>Command line to start the program is as follows:</p>
 		<p><font face="Times New Roman"><samp><strong>MEMTEST &lt;memory size&gt; &lt;base address of 
 						area to test&gt; /program switches</strong></samp></font></p>
@@ -65,9 +64,8 @@
 			available memory&nbsp;will be tested.&nbsp;Since the program detects actual 
 			memory size, it is safe to specify more memory than actually installed.</p>
 		<p>The program cannot test less than 8 megabytes.</p>
-		<p>
-			The following command line&nbsp;switches are recognized (they can be 
-			abbreviated down to the part shown with <U>underscore</U>):</p>
+		<p>The following command line&nbsp;switches are recognized (they can be abbreviated 
+			down to the part shown with <U>underscore</U>):</p>
 		<p>/<U>ro</U>w:&lt;size&gt; - specifies size (in kilobytes) of DRAM memory array 
 			row. Allowed values are 4 up to 64 (only powers of 2). By default all possible 
 			row sizes from 4 to 64 are tested. Specify this option only if you exactly know 
@@ -116,14 +114,17 @@
 		<P>After testing the complete memory, the pattern is rotated, and it is repeated 
 			until the pattern returns to the original value.</P>
 		<P>Once MEMTEST is started, it is not possible to return back to DOS,&nbsp;because 
-			the program switches the CPU to 32-bit protected mode. Testing can be stopped 
-			only by system restart - either by pressing <font face="Times New Roman"><kbd>Ctrl+Alt+Del</kbd></font>
+			the program switches the CPU to 32-bit protected mode. Testing can only be 
+			stopped by the system restart - either by pressing <font face="Times New Roman"><kbd>Ctrl+Alt+Del</kbd></font>
 			or by pressing <font face="Times New Roman"><kbd>Reset</kbd></font> (it can be 
-			found on system case, not on keyboard), or by turning power off then off 
-			(recommended only for systems without <font face="Times New Roman"><kbd>Reset</kbd></font>
+			found on the system case, not on the keyboard), or by turning the power off 
+			then off (recommended only for the systems without <font face="Times New Roman"><kbd>Reset</kbd></font>
 			button).</P>
+		<P>If the program detects less memory than you know is installed, it probably means 
+			that a piece of very unstable memory is detected and the program decided to 
+			stop scanning for more.</P>
 		<p>When memory errors messages fill all the screen, the program pauses screen 
-			output to prevent error message loss. To resume the output, press <font face="Times New Roman">
+			output to prevent error messages loss. To resume the output, press <font face="Times New Roman">
 				<kbd>Enter</kbd></font>.</p>
 		<p>While the program is working, it displays the test pass number. Full test 
 			consists of 64 passes. Required time depends on CPU and memory size. Keep in 
@@ -143,12 +144,11 @@
 		</P>
 		<UL>
 			<LI>
-				<DIV align="left">
-					there are known IDE RAID controller chipsets&nbsp;that suffer from data 
-					corruption during&nbsp;simultaneous data transfer on both IDE channels under 
-					Windows 2000 and Linux,&nbsp;when overall throughput of IDE interface exceeds 
-					PCI bus throughput. Probably the controller could not properly arbitrate 
-					requests from its own channels in case of contention.</DIV>
+				<DIV align="left">there are known IDE RAID controller chipsets&nbsp;that suffer 
+					from data corruption during&nbsp;simultaneous data transfer on both IDE 
+					channels under Windows 2000 and Linux,&nbsp;when overall throughput of IDE 
+					interface exceeds PCI bus throughput. Probably the controller could not 
+					properly arbitrate requests from its own channels in case of contention.</DIV>
 			<LI>
 				<DIV align="left">a mainboard in my computer was suffering from memory corruption 
 					(some bits were unstable) during heavy disk I/O. The computer was crashing 
@@ -161,18 +161,20 @@
 				</DIV>
 			</LI>
 		</UL>
+		<P>Under Windows, the test log can be saved to a file.</P>
 		<P>Command line to start the program is as follows:</P>
 		<P><FONT face="Times New Roman"><SAMP><STRONG>MEMTEST&nbsp;&lt;program switches&gt;</STRONG></SAMP></FONT></P>
 		<P>The following command line switches are recognized:</P>
-		<P>/<U>ti</U>me:&lt;time limit&gt; - sets test time in minutes;</P>
-		<P>/<U>mem</U> ory:&lt;n&gt; - specifies the test area size in megabytes, from 4 to 
+		<P>/<U>ti</U>me:&lt;time limit&gt; - sets test time in minutes. If you don't 
+			specify this option, the default test time is 60 minutes;</P>
+		<P>/<U>mem</U>ory:&lt;n&gt; - specifies the test area size in megabytes, from 4 to 
 			1024. Up to 4 <STRONG>/memory</STRONG> command line switches allowed, each of 
 			them causes the program to start a separate test thread. /pattern option that 
 			goes after /memory specifies a test pattern for this thread. Max total allowed 
 			memory size is about 2000 MB. If you&nbsp;need to test&nbsp;more memory, you 
 			can start more test sessions.</P>
-		<P>/<U>fi</U> le:&lt;directory&gt; &lt;n&gt; - specifies the test&nbsp;file 
-			location and&nbsp;size in megabytes (from 4 up to 64000).&nbsp;Up to 4 <STRONG>/file</STRONG>
+		<P>/<U>fi</U>le:&lt;directory&gt; &lt;n&gt; - specifies the test&nbsp;file location 
+			and&nbsp;size in megabytes (from 4 up to 64000).&nbsp;Up to 4 <STRONG>/file</STRONG>
 			command line switches allowed,&nbsp;each of them causes the program to start a 
 			separate test thread. /pattern option that goes after /file specifies a test 
 			pattern for this thread. If the directory name contains spaces, surround it 
@@ -207,7 +209,7 @@
 		<P>Each memory or file test thread can have its own test pattern. For example:</P>
 		<P>MEMTEST /mem:64 /pat:01234567:FEDCBA98 /mem:64 /pat:80008000:7FFF7FFF
 			<BR>
-			&nbsp;&nbsp; /file:c:\ /pat:80007FFF:7FFF8000&nbsp; /file:d:\ 
+			&nbsp;&nbsp; /file:c:\ 256 /pat:80007FFF:7FFF8000&nbsp; /file:d:\ 256 
 			/pat:0080FF7F:0080FF7F</P>
 		<P>For file test, it makes sense to use patterns which are inverted every 16 bits, 
 			like 80007FFF. It is because the IDE data bus is 16 bits wide. For SCSI 
@@ -254,14 +256,11 @@
 					0100000000000000 0100000000000000 0100000000000000 0100000000000000<br>
 					1011111111111111 1011111111111111 1011111111111111 1011111111111111<br>
 					0100000000000000 0100000000000000 0100000000000000 0100000000000000</code></font></p>
-		<p>
-			Pattern replacement on the descenting pass is done with&nbsp;uncacheable 64-bit 
+		<p>Pattern replacement on the descenting pass is done with&nbsp;uncacheable 64-bit 
 			exchange operation: CMPEXCH8B. This allows to test locked read-modify-write 
 			memory cycle.</p>
-		<P>
-			Such tests are performed for all bit positions (total 16).</P>
-		<P>
-			Next tests work with "all ones"/"all zeros" patterns, with pattern inverted on 
+		<P>Such tests are performed for all bit positions (total 16).</P>
+		<P>Next tests work with "all ones"/"all zeros" patterns, with pattern inverted on 
 			every other memory array row. This test exploits the dynamic RAM structure.</P>
 		<p>Dynamic RAM array is crossed by <strong>word</strong> (or row) lines (that go 
 			from row address decoder) and column lines. Each pair of column lines is 
@@ -310,7 +309,7 @@
 			written and verified. It repeats until the pattern returns to the original 
 			value.</P>
 		<H3 align="center">Changes history</H3>
-		<p align="left">2.00 (July 2002). Fixed a bug in memory speed test. Added 
+		<p align="left">2.00 (August 1,&nbsp;2002). Fixed a bug in memory speed test. Added 
 			capability to work under Windows. Removed default memory size limit in 512 
 			megabytes.</p>
 		<P align="left">1.04 (August 10, 2000). Fixed a bug in the test relocation, which 
