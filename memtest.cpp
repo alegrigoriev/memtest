@@ -1,42 +1,4 @@
 // memtest.cpp
-/*
-Выполняются следующие тесты:
-1. Проверка записи/чтения всех единиц/всех нулей.
-2. Бегущий нуль/бегущая единица (чередование
-   000001000/1111101111 по четверным словам).
-
-Тесты 1-2 выполняются для разных начальных слов линии кэша.
-
-Тесты выполняются в режимах записи одиночными
-словами/байтами/двойными/четверными словами,
-так и в режиме burst записи (с предварительной записью в кэш).
-Если процессор работает по принципу write-allocate, то запись
-всегда идет в режиме burst.
-
-5. Тест помех по шине чтения. Чередуется чтение строк, в которых
-   записана инверсная информация. Принимается, что младшие
-   адреса - это адрес столбца, старшие адреса - строка. Учитывая,
-   что число бит адреса столбца составляет 9-11 бит, шаг чтения
-    изменяется в пределах 512*8-8192*8. Для части строк наличие
-    заряда соответствует 1, для другой части - 0.
-6. Тест помех по линии адреса. Производится многократное
-    чтение по адресам, в которых адреса строки и столбца
-    различаются одной единицей, либо во всех разрядах, кроме одного
-7. Тест записи псевдослучайной последовательности. Применяется
-    для проверки адресации.
-5. Те же тесты (кроме 6, 7), но с проверкой регенерации -
-    между записью и чтением выдерживается интервал
-    около секунды (может быть задано при запуске),
-    в течение интервала никаких обращений
-    к внешней памяти не производится.
-
-x. Тесты внешнего кэша:
-   1. Правильность записи при выборке из памяти (начиная с
-   произвольного двойного слова линии кэша).
-   2. Правильность записи из процессора (одиночные слова и burst).
-   3. Правильность передачи в DRAM при выполнении write-back.
-   4. Правильность сравнения тэга при чтении и записи.
-*/
 
 #include <windows.h>
 
@@ -445,18 +407,14 @@ void __stdcall MemoryError32(void * addr,
     my_puts(buffer, TRUE, 0x0f00); // TRUE - it is error message
 }
 
-__declspec(naked) DWORD __stdcall WritePseudoRandom(void * addr,
-                                                    size_t size, DWORD seed, DWORD poly)
+DWORD __stdcall WritePseudoRandom(void * addr,
+                                  size_t _size, DWORD seed, DWORD poly)
 {
     __asm {
-        push    esi
-        push    edi
-        push    ebp
-        push    ebx
-        mov     esi,[esp+4+16]  // addr
-        mov     ecx,[esp+8+16]  // size
-        mov     edi,[esp+12+16] // seed
-        mov     ebx,[esp+16+16] // poly
+        mov     esi,addr
+        mov     ecx,_size
+        mov     edi,seed
+        mov     ebx,poly
         cmp     [CpuType],586
         jl      Do32bit
         shr     ecx,5
@@ -489,12 +447,8 @@ loop1:
         dec     ecx
         jg      loop1
 
-        mov     eax,edi     // return last seed value
-        pop     ebx
-        pop     ebp
-        pop     edi
-        pop     esi
-        ret     16
+        mov     seed,edi     // return last seed value
+        jmp     _ret
 Do32bit:
         shr     ecx,4
 loop2:
@@ -522,28 +476,23 @@ loop2:
         dec     ecx
         jg      loop2
 
-        mov     eax,edi     // return last seed value
-        pop     ebx
-        pop     ebp
-        pop     edi
-        pop     esi
-        ret     16
+        mov     seed,edi     // return last seed value
     }
+_ret:   return seed;
 }
 
 // preload data to the cache
-__declspec(naked) void __stdcall PreloadCache(void * addr, size_t size)
+void __stdcall PreloadCache(void * addr, size_t _size)
 {
     __asm {
-        mov     ecx,[esp+8]
+        mov     ecx,_size
         shr     ecx,5
-        mov     edx,[esp+4]
+        mov     edx,addr
 loop1:
         mov     eax,[edx]
         add     edx,32
         dec     ecx
         jg      loop1
-        ret     8
     }
 }
 
@@ -598,100 +547,82 @@ void DoPreheatMemory(void * TestStartVirtAddr, size_t MemoryToTestSize, size_t s
 
 // preload data to the cache, jumping from one to another
 // memory matrix row. Row step is half of 'size' argument
-__declspec(naked) void __stdcall ReadMemorySeeSaw(void * addr, size_t size, size_t step)
+void __stdcall ReadMemorySeeSaw(void * addr, size_t _size, size_t step)
 {
     __asm {
-        push    ebx
-        push    edi
-        mov     ecx,[esp+8+8]   // size
-        mov     ebx,[esp+12+8] // step
+        mov     ecx,_size
+        mov     ebx,step
         sub     ecx,ebx
         shr     ecx,5
-        mov     edi,[esp+4+8]
+        mov     edi,addr
 loop1:
         mov     eax,[edi]
         mov     edx,[edi+ebx]
         add     edi,32
         dec     ecx
         jg      loop1
-        pop     edi
-        pop     ebx
-        ret     12
     }
 }
 
 // fill memory area with the specified QWORD data
-// Используется для записи всех единиц/всех нулей
-__declspec(naked) void __stdcall
-        FillMemoryPattern(void * addr, size_t size,
+// The function is called to write all zeros or ones.
+void __stdcall
+        FillMemoryPattern(void * addr, size_t _size,
                           DWORD pattern)
 {
     // size is 32 bytes multiply
     __asm {
-        push    esi
-        push    ecx
-        mov     ecx,[esp + 8+8]
+        mov     ecx,_size
         shr     ecx,5
-        mov     esi,[esp + 4+8]
-        mov     eax,[esp + 12+8]
+        mov     edx,addr
+        mov     eax,pattern
 loop1:
-        mov     [esi],eax
-        mov     [esi+4],eax
-        mov     [esi+8],eax
-        mov     [esi+4+8],eax
-        mov     [esi+16],eax
-        mov     [esi+4+16],eax
-        mov     [esi+24],eax
-        mov     [esi+4+24],eax
-        add     esi,32
+        mov     [edx],eax
+        mov     [edx+4],eax
+        mov     [edx+8],eax
+        mov     [edx+4+8],eax
+        mov     [edx+16],eax
+        mov     [edx+4+16],eax
+        mov     [edx+24],eax
+        mov     [edx+4+24],eax
+        add     edx,32
         dec     ecx
         jg      loop1
-        pop     ecx
-        pop     esi
-        ret     12
     }
 }
 
-__declspec(naked) void __stdcall
-        FillMemoryPatternWriteAlloc(void * addr, size_t size,
+void __stdcall
+        FillMemoryPatternWriteAlloc(void * addr, size_t _size,
                                     DWORD pattern)
 {
     // size is 32 bytes multiply
     __asm {
-        push    esi
-        push    ecx
-        push    ebx
-        mov     ecx,[esp + 8+12]
+        mov     ecx,_size
         shr     ecx,5
-        mov     esi,[esp + 4+12]
-        mov     eax,[esp + 12+12]
+        mov     edi,addr
+        mov     eax,pattern
 loop1:
-        mov     edx,[esi]
-        mov     ebx,[esi+4]
-        mov     [esi],eax
-        mov     [esi+4],eax
-        mov     [esi+8],eax
-        mov     [esi+4+8],eax
-        mov     [esi+16],eax
-        mov     [esi+4+16],eax
-        mov     [esi+24],eax
-        mov     [esi+4+24],eax
-        add     esi,32
+        mov     edx,[edi]   // read the cache line first
+        mov     ebx,[edi+4]
+        mov     [edi],eax
+        mov     [edi+4],eax
+        mov     [edi+8],eax
+        mov     [edi+4+8],eax
+        mov     [edi+16],eax
+        mov     [edi+4+16],eax
+        mov     [edi+24],eax
+        mov     [edi+4+24],eax
+        add     edi,32
         dec     ecx
         jg      loop1
-        pop     ebx
-        pop     ecx
-        pop     esi
-        ret     12
     }
 }
 
 // fill memory area with 2 different QWORDs.
 // each QWORD is composed of two equal DWORDs.
-// Используется для записи бегущего нуля/бегущей 1,
-// шахматного поля.
-__declspec(naked) void __stdcall
-        FillMemoryPattern(void * addr, size_t size,
+// is used to write running 1/running 0
+void __stdcall
+        FillMemoryPattern(void * addr, size_t _size,
                           unsigned __int32 data0,
                           unsigned __int32 data1)
 {
@@ -699,13 +630,11 @@ __declspec(naked) void __stdcall
     // data0, data0, data1, data1, data0, data0, data1, data1
     // size is 32 bytes multiply
     __asm {
-        push    esi
-        push    ecx
-        mov     ecx,[esp + 8+8]
+        mov     ecx,_size
         shr     ecx,5
-        mov     esi,[esp + 4+8]
-        mov     eax,[esp + 12+8]
-        mov     edx,[esp + 16+8]
+        mov     esi,addr
+        mov     eax,data0
+        mov     edx,data1
 loop1:
         mov     [esi],eax
         mov     [esi+4],eax
@@ -718,64 +647,54 @@ loop1:
         add     esi,32
         dec     ecx
         jg      loop1
-        pop     ecx
-        pop     esi
-        ret     16
     }
 }
 
 // compare memory area with the specified QWORD
-__declspec(naked) void __stdcall CompareMemory(void * addr, size_t size,
-                                               unsigned __int32 pattern)
+void __stdcall CompareMemory(void * addr, size_t _size,
+                             unsigned __int32 pattern)
 {
     __asm {
-        push    ebx
-        push    esi
-        push    ecx
-        push    ebp
-        mov     ecx,[esp + 8+16]
+        mov     ecx,_size
         shr     ecx,5
-        mov     esi,[esp + 4+16]     // addr
-        mov     eax,[esp + 12+16]    // pattern
+        mov     esi,addr
+        mov     eax,pattern
 loop1:
         mov     ebx,[esi]
-        mov     ebp,[esi+4]
+        mov     edx,[esi+4]
         cmp     ebx,eax
         jnz     error0
-        cmp     ebp,eax
+        cmp     edx,eax
         jnz     error0
 continue0:
         mov     ebx,[esi+8]
-        mov     ebp,[esi+4+8]
+        mov     edx,[esi+4+8]
         cmp     ebx,eax
         jnz     error8
-        cmp     ebp,eax
+        cmp     edx,eax
         jnz     error8
 continue8:
         mov     ebx,[esi+16]
-        mov     ebp,[esi+4+16]
+        mov     edx,[esi+4+16]
         cmp     ebx,eax
         jnz     error16
-        cmp     ebp,eax
+        cmp     edx,eax
         jnz     error16
 continue16:
         mov     ebx,[esi+24]
-        mov     ebp,[esi+4+24]
+        mov     edx,[esi+4+24]
         cmp     ebx,eax
         jnz     error24
-        cmp     ebp,eax
+        cmp     edx,eax
         jnz     error24
 continue24:
         add     esi,32
         dec     ecx
         jnz     loop1
-        pop     ebp
-        pop     ecx
-        pop     esi
-        pop     ebx
-        xor     eax,eax
-        xor     edx,edx
-        ret     12
+    }
+    return;
+
+    __asm {
 error0:
         push    eax
         push    edx
@@ -783,7 +702,7 @@ error0:
         push    eax
         push    eax
         push    ebx
-        push    ebp
+        push    edx
         push    esi
         call    MemoryError
         pop     ecx
@@ -797,7 +716,7 @@ error8:
         push    eax
         push    eax
         push    ebx
-        push    ebp
+        push    edx
         lea     eax,[esi+8]
         push    eax
         call    MemoryError
@@ -812,7 +731,7 @@ error16:
         push    eax
         push    eax
         push    ebx
-        push    ebp
+        push    edx
         lea     eax,[esi+16]
         push    eax
         call    MemoryError
@@ -827,7 +746,7 @@ error24:
         push    eax
         push    eax
         push    ebx
-        push    ebp
+        push    edx
         lea     eax,[esi+24]
         push    eax
         call    MemoryError
@@ -840,58 +759,51 @@ error24:
 
 
 // compare memory area with the specified QWORD backward
-__declspec(naked) void __stdcall CompareMemoryBackward(void * addr, size_t size,
-                                                       unsigned __int32 pattern)
+void __stdcall CompareMemoryBackward(void * addr, size_t _size,
+                                     unsigned __int32 pattern)
 {
     __asm {
-        push    ebx
-        push    esi
-        push    ecx
-        push    ebp
-        mov     ecx,[esp + 8+16]
-        mov     esi,[esp + 4+16]     // addr
+        mov     ecx,_size
+        mov     esi,addr
         lea     esi,[esi+ecx-32]
         shr     ecx,5
-        mov     eax,[esp + 12+16]    // pattern
+        mov     eax,pattern
 loop1:
         mov     ebx,[esi]
-        mov     ebp,[esi+4]
+        mov     edx,[esi+4]
         cmp     ebx,eax
         jnz     error0
-        cmp     ebp,eax
+        cmp     edx,eax
         jnz     error0
 continue0:
         mov     ebx,[esi+8]
-        mov     ebp,[esi+4+8]
+        mov     edx,[esi+4+8]
         cmp     ebx,eax
         jnz     error8
-        cmp     ebp,eax
+        cmp     edx,eax
         jnz     error8
 continue8:
         mov     ebx,[esi+16]
-        mov     ebp,[esi+4+16]
+        mov     edx,[esi+4+16]
         cmp     ebx,eax
         jnz     error16
-        cmp     ebp,eax
+        cmp     edx,eax
         jnz     error16
 continue16:
         mov     ebx,[esi+24]
-        mov     ebp,[esi+4+24]
+        mov     edx,[esi+4+24]
         cmp     ebx,eax
         jnz     error24
-        cmp     ebp,eax
+        cmp     edx,eax
         jnz     error24
 continue24:
         sub     esi,32
         dec     ecx
         jnz     loop1
-        pop     ebp
-        pop     ecx
-        pop     esi
-        pop     ebx
-        xor     eax,eax
-        xor     edx,edx
-        ret     12
+    }
+    return;
+
+    __asm {
 error0:
         push    eax
         push    edx
@@ -899,7 +811,7 @@ error0:
         push    eax
         push    eax
         push    ebx
-        push    ebp
+        push    edx
         push    esi
         call    MemoryError
         pop     ecx
@@ -913,7 +825,7 @@ error8:
         push    eax
         push    eax
         push    ebx
-        push    ebp
+        push    edx
         lea     eax,[esi+8]
         push    eax
         call    MemoryError
@@ -928,7 +840,7 @@ error16:
         push    eax
         push    eax
         push    ebx
-        push    ebp
+        push    edx
         lea     eax,[esi+16]
         push    eax
         call    MemoryError
@@ -943,7 +855,7 @@ error24:
         push    eax
         push    eax
         push    ebx
-        push    ebp
+        push    edx
         lea     eax,[esi+24]
         push    eax
         call    MemoryError
@@ -956,20 +868,17 @@ error24:
 
 
 // compare memory area with the specified QWORD pattern
-__declspec(naked) void  * __stdcall
-    CompareMemoryPattern(void * addr, size_t size,
-                         unsigned long data0,
-                         unsigned long data1)
+void  __stdcall
+        CompareMemoryPattern(void * addr, size_t _size,
+                             unsigned long data0,
+                             unsigned long data1)
 {
     __asm {
-        push    esi
-        push    ecx
-        push    ebp
-        mov     ecx,[esp + 8+12]
+        mov     ecx,_size
         shr     ecx,5
-        mov     esi,[esp + 4+12]     // addr
-        mov     eax,[esp + 12+12]    // data0
-        mov     edx,[esp + 16+12]    // data1
+        mov     esi,addr
+        mov     eax,data0
+        mov     edx,data1
 loop1:
         cmp     eax,[esi]
         jnz     error0
@@ -994,12 +903,9 @@ continue24:
         add     esi,32
         dec     ecx
         jnz     loop1
-        pop     ebp
-        pop     ecx
-        pop     esi
-        xor     eax,eax
-        xor     edx,edx
-        ret     16
+    }
+    return;
+    __asm {
 
 error0:
         push    eax
@@ -1073,21 +979,18 @@ error24:
 
 // compare memory area with the specified QWORD pattern
 // from high to low addresses
-__declspec(naked) void  * __stdcall
-    CompareMemoryPatternBackward(void * addr, size_t size,
-                                 unsigned long data0,
-                                 unsigned long data1)
+void __stdcall
+        CompareMemoryPatternBackward(void * addr, size_t _size,
+                                     unsigned long data0,
+                                     unsigned long data1)
 {
     __asm {
-        push    esi
-        push    ecx
-        push    ebp
-        mov     ecx,[esp + 8+12]
-        mov     esi,[esp + 4+12]     // addr
+        mov     ecx,_size
+        mov     esi,addr
         add     esi,ecx
         shr     ecx,5
-        mov     eax,[esp + 12+12]    // data0
-        mov     edx,[esp + 16+12]    // data1
+        mov     eax,data0
+        mov     edx,data1
 loop1:
         sub     esi,32
         cmp     eax,[esi]
@@ -1112,12 +1015,11 @@ continue16:
 continue24:
         dec     ecx
         jnz     loop1
-        pop     ebp
-        pop     ecx
-        pop     esi
-        xor     eax,eax
-        xor     edx,edx
-        ret     16
+    }
+
+    return;
+
+    __asm {
 
 error0:
         push    eax
@@ -1125,10 +1027,8 @@ error0:
         push    ecx
         push    eax // reference
         push    eax
-        mov     eax,[esi]  // read data
-        push    eax
-        mov     eax,[esi+4]
-        push    eax
+        push    [esi]  // read data
+        push    [esi+4]
         push    esi
         call    MemoryError
         pop     ecx
@@ -1141,10 +1041,8 @@ error8:
         push    ecx
         push    edx // reference
         push    edx
-        mov     eax,[esi+8]  // read data
-        push    eax
-        mov     eax,[esi+8+4]
-        push    eax
+        push    [esi+8]   // read data
+        push    [esi+8+4]
         lea     eax,[esi+8]
         push    eax
         call    MemoryError
@@ -1158,10 +1056,8 @@ error16:
         push    ecx
         push    eax // reference
         push    eax
-        mov     eax,[esi+16]  // read data
-        push    eax
-        mov     eax,[esi+16+4]
-        push    eax
+        push    [esi+16]  // read data
+        push    [esi+16+4]
         lea     eax,[esi+16]
         push    eax
         call    MemoryError
@@ -1175,10 +1071,8 @@ error24:
         push    ecx
         push    edx // reference
         push    edx
-        mov     eax,[esi+24]  // read data
-        push    eax
-        mov     eax,[esi+24+4]
-        push    eax
+        push    [esi+24]  // read data
+        push    [esi+24+4]
         lea     eax,[esi+24]
         push    eax
         call    MemoryError
@@ -1191,26 +1085,21 @@ error24:
 
 // compare memory area with the specified QWORD pattern
 // compared area is rewritten with another pattern
-__declspec(naked) void  * __stdcall
-    CompareMemoryPatternAndReplace(void * addr, size_t size,
-                                   unsigned long data0,
-                                   unsigned long data1,
-                                   unsigned long new_data0,
-                                   unsigned long new_data1)
+void  __stdcall
+        CompareMemoryPatternAndReplace(void * addr, size_t _size,
+                                       unsigned long data0,
+                                       unsigned long data1,
+                                       unsigned long new_data0,
+                                       unsigned long new_data1)
 {
     __asm {
-        push    edi
-        push    esi
-        push    ecx
-        push    ebx
-        push    ebp
-        mov     ecx,[esp + 8+20]
+        mov     ecx,_size
         shr     ecx,5
-        mov     esi,[esp + 4+20]     // addr
-        mov     eax,[esp + 12+20]    // data0
-        mov     edx,[esp + 16+20]    // data1
-        mov     ebx,[esp + 20+20]   // new_data0
-        mov     edi,[esp + 24+20]   // new_data1
+        mov     esi,addr
+        mov     eax,data0
+        mov     edx,data1
+        mov     ebx,new_data0
+        mov     edi,new_data1
 loop1:
         cmp     eax,[esi]
         jnz     error0
@@ -1243,14 +1132,10 @@ continue24:
         add     esi,32
         dec     ecx
         jnz     loop1
-        pop     ebp
-        pop     ebx
-        pop     ecx
-        pop     esi
-        pop     edi
-        xor     eax,eax
-        xor     edx,edx
-        ret     24
+    }
+    return;
+
+    __asm {
 
 error0:
         push    eax
@@ -1324,27 +1209,22 @@ error24:
 
 // compare memory area with the specified QWORD pattern
 // from high to low addresses
-__declspec(naked) void  * __stdcall
-    CompareMemoryPatternBackwardAndReplace(void * addr, size_t size,
-                                           unsigned long data0,
-                                           unsigned long data1,
-                                           unsigned long new_data0,
-                                           unsigned long new_data1)
+void __stdcall
+        CompareMemoryPatternBackwardAndReplace(void * addr, size_t _size,
+                                               unsigned long data0,
+                                               unsigned long data1,
+                                               unsigned long new_data0,
+                                               unsigned long new_data1)
 {
     __asm {
-        push    edi
-        push    esi
-        push    ecx
-        push    ebx
-        push    ebp
-        mov     esi,[esp + 4+20]     // addr
-        mov     ecx,[esp + 8+20]
+        mov     esi,addr
+        mov     ecx,_size
         add     esi,ecx    // calculate high address
         shr     ecx,5
-        mov     eax,[esp + 12+20]    // data0
-        mov     edx,[esp + 16+20]    // data1
-        mov     ebx,[esp + 20+20]   // new_data0
-        mov     edi,[esp + 24+20]   // new_data1
+        mov     eax,data0
+        mov     edx,data1
+        mov     ebx,new_data0
+        mov     edi,new_data1
 loop1:
         sub     esi,32
         cmp     eax,[esi]
@@ -1377,14 +1257,11 @@ continue24:
         mov     [esi+4+24],edi
         dec     ecx
         jnz     loop1
-        pop     ebp
-        pop     ebx
-        pop     ecx
-        pop     esi
-        pop     edi
-        xor     eax,eax
-        xor     edx,edx
-        ret     24
+    }
+
+    return;
+
+    _asm {
 
 error0:
         push    eax
@@ -1452,22 +1329,18 @@ error24:
         pop     ecx
         pop     edx
         pop     eax
-        jmp     continue24
     }
+    goto     continue24;
 }
 
-__declspec(naked) DWORD __stdcall ComparePseudoRandom(void * addr,
-                                                      size_t size, DWORD seed, DWORD poly)
+DWORD __stdcall ComparePseudoRandom(void * addr,
+                                    size_t _size, DWORD seed, DWORD poly)
 {
     __asm {
-        push    esi
-        push    edi
-        push    ebp
-        push    ebx
-        mov     esi,[esp+4+16]  // addr
-        mov     ecx,[esp+8+16]  // size
-        mov     edi,[esp+12+16] // seed
-        mov     ebx,[esp+16+16] // poly
+        mov     esi,addr
+        mov     ecx,_size
+        mov     edi,seed
+        mov     ebx,poly
         cmp     [CpuType],586
         jl      Do32bit
         shr     ecx,5
@@ -1512,12 +1385,11 @@ continue24:
         dec     ecx
         jg      loop1
 
-        mov     eax,edi     // return last seed value
-        pop     ebx
-        pop     ebp
-        pop     edi
-        pop     esi
-        ret     16
+        mov     seed,edi     // return last seed value
+    }
+    return seed;
+
+    __asm {
 error0:
         push    eax
         push    edx
@@ -1621,12 +1493,12 @@ continue12a:
         dec     ecx
         jg      loop1a
 
-        mov     eax,edi     // return last seed value
-        pop     ebx
-        pop     ebp
-        pop     edi
-        pop     esi
-        ret     16
+        mov     seed,edi     // return last seed value
+    }
+
+    return seed;
+
+    __asm   {
 error0a:
         push    eax
         push    edx
@@ -1976,7 +1848,7 @@ void Reboot()
     // then reset the processor using the keyboard controler
     while (_inp(0x64) & 2);
     _outp(0x64, 0xFE);  // pulse RESET line
-    while(1) __asm hlt;
+//    while(1) __asm hlt;
     // if it does not reset, try enter to shutdown mode
     RESET_IDT();        // reset IDT to a single descriptor
     __asm INT   0xFF    // causes processor shutdown and reset
