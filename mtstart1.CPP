@@ -275,6 +275,44 @@ inline void GetCursorPosition(MEMTEST_STARTUP_PARAMS * pParams)
 #endif
 }
 
+char const * IsOption(char const * arg, char const * option)
+{
+    // non-required characters in the option name are separated by '*'
+    BOOL Enough = FALSE;
+    BOOL WantParameter = FALSE;
+    while (*option != 0)
+    {
+        if ('*' == *option)
+        {
+            Enough = TRUE;
+            option++;
+            continue;
+        }
+
+        if (':' == *option)
+        {
+            Enough = TRUE;
+            WantParameter = TRUE;
+            option++;
+            continue;
+        }
+
+        if (0 != strnicmp(arg, option, 1))
+        {
+            break;
+        }
+        arg++;
+        option++;
+    }
+
+    if ((0 == *option || Enough)
+        && (0 == *arg || (WantParameter && ':' == *(arg++))))
+    {
+        return arg;
+    }
+    return NULL;
+}
+
 BOOL ProcessCommandLine(int argc, char * * argv, MEMTEST_STARTUP_PARAMS * pParams)
 {
     argc--;
@@ -312,7 +350,9 @@ BOOL ProcessCommandLine(int argc, char * * argv, MEMTEST_STARTUP_PARAMS * pParam
 
         option ++;
 
-        if (0 == stricmp(option, "delay"))
+        char const * nextch;
+
+        if (NULL != (nextch = IsOption(option, "de:lay")))
         {
             char * last;
             long delay1, delay2;
@@ -323,74 +363,92 @@ BOOL ProcessCommandLine(int argc, char * * argv, MEMTEST_STARTUP_PARAMS * pParam
                 || (delay2 = strtol(argv[2], & last, 10)) < 0
                 || delay2 > 1000
                 || *last != 0)
+            {
                 return FALSE;
+            }
+
             pParams->ShortDelay = delay1 * 1000L;
             pParams->LongDelay = delay2 * 1000L;
             argv += 2;
             argc -= 2;
         }
-        else if (0 == stricmp(option, "row"))
+        else if (NULL != (nextch = IsOption(option, "ro:w")))
         {
             char * last;
             long row;
-            if (argc < 2
-                || ((row = strtol(argv[1], & last, 10)) != 4
-                    && row != 8 && row != 16 && row != 32 && row != 64)
+            if (0 == *nextch)
+            {
+                if (argc < 2)
+                {
+                    return FALSE;
+                }
+                argv ++;
+                argc --;
+                nextch = argv[0];
+            }
+
+            row = strtol(nextch, & last, 10);
+            if ((row != 4 && row != 8 && row != 16 && row != 32 && row != 64)
                 || *last != 0)
-                return FALSE;
-            pParams->RowSize = row;
-            argv ++;
-            argc --;
-        }
-        else if (0 == stricmp(option, "writethru"))
-        {
-            pParams->Flags |= TEST_FLAGS_WRITETHRU;
-        }
-        else if (0 == stricmp(option, "nocache"))
-        {
-            pParams->Flags |= TEST_FLAGS_NOCACHE;
-        }
-        else if (0 == stricmp(option, "preheat"))
-        {
-            pParams->Flags |= TEST_FLAGS_PREHEAT_MEMORY;
-        }
-        else if (0 == stricmp(option, "speed"))
-        {
-            pParams->Flags |= TEST_FLAGS_PERFORMANCE;
-        }
-        else if (0 == stricmp(option, "readtwice"))
-        {
-            pParams->Flags |= TEST_READ_TWICE;
-        }
-        else if (0 == stricmp(option, "nocheck"))
-        {
-            pParams->Flags |= TEST_NO_MACHINE_CHECK;
-        }
-        else if (0 == stricmp(option, "fastdetect"))
-        {
-            pParams->Flags |= TEST_FLAGS_FASTDETECT;
-        }
-        else if (0 == stricmp(option, "nousblegacy"))
-        {
-            pParams->Flags |= TEST_NO_USB_LEGACY;
-        }
-        else if (0 == stricmp(option, "passcount"))
-        {
-            char * last;
-            int count;
-            if (argc < 2)
             {
                 return FALSE;
             }
+            pParams->RowSize = row;
+        }
+        else if (IsOption(option, "wr*itethru"))
+        {
+            pParams->Flags |= TEST_FLAGS_WRITETHRU;
+        }
+        else if (IsOption(option, "noca*che"))
+        {
+            pParams->Flags |= TEST_FLAGS_NOCACHE;
+        }
+        else if (IsOption(option, "pre*heat"))
+        {
+            pParams->Flags |= TEST_FLAGS_PREHEAT_MEMORY;
+        }
+        else if (IsOption(option, "sp*eed"))
+        {
+            pParams->Flags |= TEST_FLAGS_PERFORMANCE;
+        }
+        else if (IsOption(option, "re*adtwice"))
+        {
+            pParams->Flags |= TEST_READ_TWICE;
+        }
+        else if (IsOption(option, "noch*eck"))
+        {
+            pParams->Flags |= TEST_NO_MACHINE_CHECK;
+        }
+        else if (IsOption(option, "fa*stdetect"))
+        {
+            pParams->Flags |= TEST_FLAGS_FASTDETECT;
+        }
+        else if (IsOption(option, "nous*blegacy"))
+        {
+            pParams->Flags |= TEST_NO_USB_LEGACY;
+        }
+        else if (NULL != (nextch = IsOption(option, "pas:scount")))
+        {
+            char * last;
+            int count;
+            if (0 == *nextch)
+            {
+                if (argc < 2)
+                {
+                    return FALSE;
+                }
+                argv ++;
+                argc --;
+                nextch = argv[0];
+            }
 
-            count = (int)strtol(argv[1], & last, 10);
+            count = (int)strtol(nextch, & last, 10);
+
             if (*last != 0)
             {
                 return FALSE;
             }
             pParams->PassCount = count;
-            argv ++;
-            argc --;
         }
         else
         {
