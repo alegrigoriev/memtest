@@ -135,13 +135,19 @@ DWORD GetSystemMemoryMap(SystemMemoryMapElement far * pMap, DWORD Offset_)
         push    bx
         push    bp
         push    si
+        push    cx
         //mov  eax,0x0000E820
         _emit 0x66 _asm _emit 0B8h _asm _emit 20h _asm _emit 0xE8 _asm _emit 0 _asm _emit 0
         //mov edx, 0x534D4150
         _emit 0x66 _asm mov dx,0x4150 _asm _emit 0x4D _asm _emit 0x53
+
+        // mov	ecx,20
+        _emit 0x66 _asm _emit 0xb9 _asm _emit 0x14 _asm _emit 0x00 _asm _emit 0x00 _asm _emit 0x00
         les di, pMap
         _emit 0x66 _asm mov bx, word ptr Offset_
         int     15h
+
+        pop     cx
         pop     si
         pop     bp
         jnc     good
@@ -162,8 +168,8 @@ void FillMemoryMap(PROTECTED_MODE_STARTUP_DATA * pStartup)
     for (i = 0, Offset = 0; i < MAX_NUMBER_OF_MEMORY_RANGES; )
     {
         Offset = GetSystemMemoryMap(&map, Offset);
-        TRACE("GetSystemMemoryMap returned base=%lX%08lX, length: %lX%08lX, type=%ld\n",
-              map.BaseAddressHigh, map.BaseAddressLow,
+        TRACE("GetSystemMemoryMap: Offset=%08lX, base=%lX%08lX, length: %lX%08lX, type=%ld\n",
+              Offset, map.BaseAddressHigh, map.BaseAddressLow,
               map.RangeSizeHigh, map.RangeSizeLow,
               map.RangeType);
 
@@ -559,7 +565,8 @@ int _cdecl main(int argc, char *argv[])
     }
 
     PROTECTED_MODE_STARTUP_DATA Startup;
-    Startup.pProgramBase = 0;
+    Startup.ProgramBaseAllocatedFlat = 0;
+    Startup.ImageBase = 0;
     Startup.ProgramEntry = 0;
     Startup.ProgramSize = 0;
 

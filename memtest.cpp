@@ -61,7 +61,7 @@ public:
     size_t MemoryRowSize;    // vary from 4K to 64K
     int m_TestDelay;
 
-    virtual unsigned TestFunction() = 0;
+    unsigned TestFunction();
 
     void WriteTestData(char * addr, size_t size,
                        DWORD pattern1, DWORD pattern2,
@@ -82,19 +82,10 @@ public:
     DWORD CompareRandomTestData(char * addr, size_t size,
                                 DWORD seed, DWORD polynom, DWORD flags);
 
-    // global for all instances
-    static BOOL m_bStopRunning;
 };
 
-BOOL TestThread::m_bStopRunning = FALSE;
-
-class DOSTestThread : public TestThread
-{
-public:
-    ULONG m_SizeToTest;
-
-    virtual unsigned TestFunction();
-};
+// TestThread derived classes used to exist for Windows memory test thread and disk test thread,
+// but they are removed from this version, which is exclusively standalone
 
 MEMTEST_STARTUP_PARAMS TestParams;
 
@@ -180,7 +171,7 @@ void InitInterruptTable(GATE * Addr);
 // move the program and all the tables to next 4 MByte
 void RelocateProgram(void);
 size_t MapMemoryToTest(PHYSICAL_ADDR ProgramRegion, size_t ProgramRegionSize,
-                       PHYSICAL_ADDR PhysMemoryBottom, PHYSICAL_ADDR PhysMemoryTop);
+                       PHYSICAL_ADDR *pPhysMemoryBottom, PHYSICAL_ADDR PhysMemoryTop);
 
 extern "C" {
     int __cdecl _inp(unsigned short);
@@ -1839,7 +1830,7 @@ void TestThread::DoMemoryTestPattern(char * addr, size_t _size,
     DWORD Pattern1 = InitPattern1;
     DWORD Pattern2 = InitPattern2;
 
-    for (int loop = 0; loop < 32 && ! m_bStopRunning; loop++)
+    for (int loop = 0; loop < 32; loop++)
     {
         DoPreheatMemory(addr, _size, 0x10000, flags);
         CheckForKey();
@@ -2107,12 +2098,12 @@ void VerifyPageTable(PHYSICAL_ADDR pPhysStart, PHYSICAL_ADDR pPhysEnd,
 
 void __stdcall _MemtestEntry()
 {
-    static DOSTestThread thread;
+    static TestThread thread;
     static_cast<MEMTEST_STARTUP_PARAMS & >(thread) = TestParams;
     thread.TestFunction();
 }
 
-unsigned DOSTestThread::TestFunction()
+unsigned TestThread::TestFunction()
 {
     DWORD flags;
     DWORD seed = RandomSeed;
@@ -2122,7 +2113,9 @@ unsigned DOSTestThread::TestFunction()
         // set new mapping to skip the program
         RelocateProgram();
         // map all left physical memory
+        PHYSICAL_ADDR CurrentTestStart = pMemoryToTestStart;
         size_t MemoryToTestSize = MapMemoryToTest(CurrentPhysProgramLocation, MemoryInUseByProgram,
+                                                  &CurrentTestStart, pMemoryToTestEnd);
                                                   pMemoryToTestStart, pMemoryToTestEnd);
 #if 0 //def _DEBUG
         VerifyPageTable(pMemoryToTestStart, pMemoryToTestEnd,
@@ -2131,6 +2124,7 @@ unsigned DOSTestThread::TestFunction()
 #endif
 
         // perform test with different read pattern and with refresh check delay
+        pMemoryToTestStart = CurrentTestStart;  // FIXME
         flags = m_Flags;
         MemoryRowSize = row_size;
         if (row_size > 0x10000)
@@ -2399,7 +2393,7 @@ char * InitMemtest(MEMTEST_STARTUP_PARAMS * pTestParams)
     MemoryInUseByProgram = ULONG_PTR(TopUsedAddress) - PROGRAM_BASE_ADDRESS;
 
     InitPageTable(pPageDirectory, PageTableSize);
-    TopVirtualAddress = (void *)((PageTableSize - PAGE_SIZE) * 0x400);
+    TopVirtualAddress = (void *)((PageTableSize - 5*PAGE_SIZE) * 0x200);
 
     // init new GDT
     // 32 bit data and stack segment sescriptor
@@ -2732,8 +2726,8 @@ void ModifyPageFlags(void * VirtAddr, size_t size, DWORD SetFlags,
 // virtual memory map:
 // 00000...400000 - low physical memory (including A0000-FFFFF)
 // 400000...4FF000 - program and stack
-// 4FF000...800000 - page tables
-// 800000 and up - memory to test (max 3 GB).
+// 4FF000...1000000 - page tables
+// 1000000 and up - memory to test (max 4 GB).
 // Physical memory map:
 // 000000-A0000 - low memory area
 // A0000-100000 - video buffers and other,
@@ -2793,11 +2787,15 @@ void RelocateProgram(void)
 }
 
 // function does not change program area mapping
+// the function maps as much as possible starting from PhysAddressToStart
+
 size_t MapMemoryToTest(PHYSICAL_ADDR ProgramRegion, size_t ProgramRegionSize,
-                       PHYSICAL_ADDR PhysMemoryBottom, PHYSICAL_ADDR PhysMemoryTop)
+                       PHYSICAL_ADDR *pPhysMemoryBottom, PHYSICAL_ADDR PhysMemoryTop)
 {
+    PHYSICAL_ADDR PhysMemoryBottom = *pPhysMemoryBottom;
+
 #ifdef _DEBUG
-    if (ProgramRegionSize > 0x400000
+    if (ProgramRegionSize > 0x1000000
         || DWORD(PhysMemoryBottom) & 0xFFFFF
         || DWORD(ProgramRegion) & 0xFFFFF
         || DWORD(PhysMemoryTop) & 0xFFFFF)
@@ -2814,16 +2812,16 @@ size_t MapMemoryToTest(PHYSICAL_ADDR ProgramRegion, size_t ProgramRegionSize,
         CurrPhysAddr = PhysMemoryBottom;
     }
 
-    while(CurrPhysAddr + 0x400000 <= PhysMemoryTop)
+    while(CurrPhysAddr + 0x200000 <= PhysMemoryTop)
     {
         if (CurrPhysAddr >= ProgramRegion + ProgramRegionSize
             || CurrPhysAddr + 0x400000 <= ProgramRegion)
         {
             MapVirtualToPhysical(CurrVirtAddr, CurrPhysAddr,
                                  0x400000);
-            CurrVirtAddr += 0x400000;   // 4MB
+            CurrVirtAddr += 0x200000;   // 2MB
         }
-        CurrPhysAddr += 0x400000;   // 4MB
+        CurrPhysAddr += 0x200000;   // 2MB
     }
 
     // map incomplete top megabytes (if any)

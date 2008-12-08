@@ -187,7 +187,7 @@ struct GATE
 struct PageTable
 {
     DWORD PageDirPointerTable[1024];
-    DWORD PageDirectory[1024];
+    DWORD PageDirectory[1024*4];
     DWORD PageTableArray[1024];    // to address 32 MB, add 15 more pages
 };
 
@@ -200,6 +200,7 @@ struct PROTECTED_MODE_STARTUP_MEMORY
     DWORD StackTop; // dummy return address
     DWORD StartupArgument;
     DWORD PageTableAddress;
+    DWORD Alignment[1024];
 };
 
 struct MemoryMap
@@ -271,7 +272,8 @@ struct MEMTEST_STARTUP_PARAMS
 struct PROTECTED_MODE_STARTUP_DATA
 {
     DWORD ProgramEntry;
-    char far * pProgramBase;
+    DWORD ProgramBaseAllocatedFlat;
+    DWORD ImageBase;
     DWORD ProgramSize;
     MEMTEST_STARTUP_PARAMS msp;
 };
