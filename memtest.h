@@ -30,7 +30,6 @@
                                     // by placing big load on them
 #define TEST_NO_USB_LEGACY         0x00080000UL
 #define TEST_FLAGS_FASTDETECT      0x00200000UL // use less thorough and faster detection
-#define TEST_FLAGS_IGNORE_XMM      0x01000000UL // Ignore XMM
 #define TEST_FLAGS_NOLARGEPAGES    0x02000000UL // Don't use 4MB pages
 #define TEST_FLAGS_NOPREFETCH      0x04000000UL // Don't prefetch data to L1/L2 cache
 

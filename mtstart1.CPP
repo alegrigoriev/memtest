@@ -479,10 +479,6 @@ int ProcessCommandLine(int argc, char * * argv, MEMTEST_STARTUP_PARAMS * pParams
         {
             pParams->m_Flags |= TEST_FLAGS_FASTDETECT;
         }
-        else if (IsOption(option, "ig*norexmm"))
-        {
-            pParams->m_Flags |= TEST_FLAGS_IGNORE_XMM;
-        }
         else if (IsOption(option, "nopr*efetch"))
         {
             pParams->m_Flags |= TEST_FLAGS_NOPREFETCH;
@@ -578,7 +574,7 @@ int _cdecl main(int argc, char *argv[])
 
     PAUSE("Going to check for bare DOS...(press Enter)");
 
-    if ( ! IsBareDOS(0 != (Startup.msp.m_Flags & TEST_FLAGS_IGNORE_XMM)))
+    if ( ! IsBareDOS(TRUE))
     {
         fputs("\nError: Can't run - memory managers detected.\n"
               "\tThe program can be run only from bare DOS.\n"
