@@ -22,7 +22,6 @@
 #define TEST_SEESAW                0x00000800UL   // place stress on rows
 #define TEST_READ_TWICE            0x00001000UL  // read memory twice
 #define TEST_REPLACE               0x00002000UL  // replace compared test data with new pattern
-#define TEST_FLAGS_PERFORMANCE     0x00004000UL   // print processor type,
                                     // features, memory performance
 #define TEST_FLAGS_WRITETHRU       0x00008000UL  // disable writeback cache
 #define TEST_FLAGS_NOCACHE         0x00010000UL

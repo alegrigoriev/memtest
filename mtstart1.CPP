@@ -467,10 +467,6 @@ int ProcessCommandLine(int argc, char * * argv, MEMTEST_STARTUP_PARAMS * pParams
         {
             pParams->m_Flags |= TEST_FLAGS_PREHEAT_MEMORY;
         }
-        else if (IsOption(option, "sp*eed"))
-        {
-            pParams->m_Flags |= TEST_FLAGS_PERFORMANCE;
-        }
         else if (IsOption(option, "re*adtwice"))
         {
             pParams->m_Flags |= TEST_READ_TWICE;

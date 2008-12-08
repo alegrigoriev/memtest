@@ -2405,6 +2405,7 @@ unsigned DOSTestThread::TestFunction()
     return 0;
 }
 
+#if 0
 void PrintMachinePerformance(MEMTEST_STARTUP_PARAMS * pTestParams)
 {
     if ((pTestParams->CpuFeatures & CPUID_TIME_STAMP_COUNTER) == 0)
@@ -2483,6 +2484,7 @@ void PrintMachinePerformance(MEMTEST_STARTUP_PARAMS * pTestParams)
               (25 * (cpu_clock / 2)) / (wpclock / 32));
     // find how much memory is cached
 }
+#endif
 
 bool IsPageInTheSystemMap(PHYSICAL_ADDR addr, MEMTEST_STARTUP_PARAMS const * pTestParams)
 {
@@ -2634,13 +2636,12 @@ char * InitMemtest(MEMTEST_STARTUP_PARAMS * pTestParams)
     _outp(0x40, char(1193180 / 100));
     _outp(0x40, char((1193180 / 100) >> 8));
 
-#ifndef _DEBUG
-    if (TestParams.m_Flags & TEST_FLAGS_PERFORMANCE)
-#endif
+#ifdef _DEBUG
     {
         my_printf(TRUE, "CPU class: %d, feature word: %x\n",
                   TestParams.CpuType, TestParams.CpuFeatures);
     }
+#endif
 
     if (TestParams.CpuFeatures & CPUID_MACHINE_CHECK_EXCEPTION
         && 0 == (TestParams.m_Flags & TEST_NO_MACHINE_CHECK))
@@ -2661,26 +2662,19 @@ char * InitMemtest(MEMTEST_STARTUP_PARAMS * pTestParams)
             {
                 __writemsr(MC0_CTL+i*4, -1LL);
             }
-#ifndef _DEBUG
-            if (TestParams.m_Flags & TEST_FLAGS_PERFORMANCE)
-#endif
+#ifdef _DEBUG
             {
                 my_puts("Machine Check Architecture enabled\n", FALSE);
             }
+#endif
         }
         __writecr4(__readcr4() | CR4_MACHINE_CHECK_ENABLED);
 
-#ifndef _DEBUG
-        if (TestParams.m_Flags & TEST_FLAGS_PERFORMANCE)
-#endif
+#ifdef _DEBUG
         {
             my_puts("Machine Check Exception enabled\n", FALSE);
         }
-    }
-
-    if (TestParams.m_Flags & TEST_FLAGS_PERFORMANCE)
-    {
-        PrintMachinePerformance(& TestParams);
+#endif
     }
 
     return NewStack;
