@@ -207,7 +207,7 @@ struct SystemMemoryMapElement
 
 struct MEMTEST_STARTUP_PARAMS
 {
-    WORD CpuType;       // 386, 486, 586, 686
+    WORD CpuType;       // 686
     WORD CpuFeatures;   // CPUID info
     DWORD MemoryStart;  // begin of memory to test, in megabytes
     DWORD MemoryTop;    // end of memory to test, in megabytes

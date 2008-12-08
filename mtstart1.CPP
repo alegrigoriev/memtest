@@ -588,14 +588,9 @@ int _cdecl main(int argc, char *argv[])
     PAUSE("Going to check CPU type...(press Enter)");
 
     long CpuType = cpu_type();     // upper word - feature bits
-    int CpuModel = WORD(CpuType);
-    if (CpuModel < 386)
-    {
-        fputs("Error: The Program requires i386 or higher CPU type\n", stderr);
-        return -1;
-    }
+    unsigned short CpuModel = WORD(CpuType);
 
-    Startup.msp.CpuType = WORD(CpuType);
+    Startup.msp.CpuType = CpuModel;
     Startup.msp.CpuFeatures = WORD(CpuType >> 16);
 
     if (Startup.msp.m_PassCount != 0)

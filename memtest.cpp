@@ -2330,34 +2330,26 @@ unsigned DOSTestThread::TestFunction()
             MemoryRowSize = 0x10000;
         }
 
-        if (CpuType >= 486)
+        if (row_size == 0x80000 || (flags & TEST_FLAGS_WRITETHRU))
         {
-            if (row_size == 0x80000 || (flags & TEST_FLAGS_WRITETHRU))
-            {
-                ModifyPageFlags(TestStartVirtAddr, MemoryToTestSize,
-                                PAGE_DIR_FLAG_WRITETHROUGH, 0);
-            }
-            else
-            {
-                ModifyPageFlags(TestStartVirtAddr, MemoryToTestSize,
-                                0, PAGE_DIR_FLAG_WRITETHROUGH);
-            }
-
-            if (row_size == 0x100000 || flags & TEST_FLAGS_NOCACHE)
-            {
-                ModifyPageFlags(TestStartVirtAddr, MemoryToTestSize,
-                                PAGE_DIR_FLAG_NOCACHE, 0);
-            }
-            else
-            {
-                ModifyPageFlags(TestStartVirtAddr, MemoryToTestSize,
-                                0, PAGE_DIR_FLAG_NOCACHE);
-            }
+            ModifyPageFlags(TestStartVirtAddr, MemoryToTestSize,
+                            PAGE_DIR_FLAG_WRITETHROUGH, 0);
         }
         else
         {
-            // for 80386
-            flags &= ~TEST_FLAGS_PREHEAT_MEMORY;
+            ModifyPageFlags(TestStartVirtAddr, MemoryToTestSize,
+                            0, PAGE_DIR_FLAG_WRITETHROUGH);
+        }
+
+        if (row_size == 0x100000 || (flags & TEST_FLAGS_NOCACHE))
+        {
+            ModifyPageFlags(TestStartVirtAddr, MemoryToTestSize,
+                            PAGE_DIR_FLAG_NOCACHE, 0);
+        }
+        else
+        {
+            ModifyPageFlags(TestStartVirtAddr, MemoryToTestSize,
+                            0, PAGE_DIR_FLAG_NOCACHE);
         }
 
         if (RowSize != 0)
