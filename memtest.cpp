@@ -490,6 +490,21 @@ char * itox(char * buffer, DWORD n)
     return buffer;
 }
 
+char * i40tox(char * buffer, ULONGLONG n)
+{
+    // 40 least significant bits as hex
+    for (int i = 40-4; i >= 0; i-=4)
+    {
+        char c = char(((n >> i) & 0xF) + '0');
+        if (c > '9')
+        {
+            c += 'A' - ('9' + 1);
+        }
+        *buffer++ = c;
+    }
+    return buffer;
+}
+
 char * itod(char * buffer, DWORD n)
 {
     DWORD rem = n % 10U;
@@ -534,6 +549,11 @@ void my_vsprintf(char * buffer, const char * format, void * vararg)
             case 'D':
             case 'd':
                 buffer = itod(buffer, * (int *) vararg);
+                break;
+            case 'p':   // physical address, 10 hex chars
+                buffer = i40tox(buffer, * (ULONGLONG *) vararg);
+                vararg = 1 + (ULONGLONG *) vararg;
+                continue;   // don't advance vararg
                 break;
             default:
                 *buffer++ = c;
