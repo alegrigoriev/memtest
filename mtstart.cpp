@@ -173,7 +173,10 @@ BOOL LoadPE(char * pFilename, PROTECTED_MODE_STARTUP_DATA * pStartup)
 void InitInterruptTable(GATE far * pIDT);
 void ProtectedModeStart(PROTECTED_MODE_STARTUP_DATA * pStartup)
 {
-    char huge * pTmp = new huge char[0x1000 + sizeof PROTECTED_MODE_STARTUP_MEMORY];
+    PROTECTED_MODE_STARTUP_MEMORY far * pAuxMemory =
+        new far PROTECTED_MODE_STARTUP_MEMORY;
+    // over 64 KB. __halloc supports that.
+    char huge * pTmp = (char huge *)_halloc(1 + sizeof PageTable/0x1000 + 15, 0x1000);
     if (NULL == pTmp)
     {
         printf("Unable to allocate startup memory\n");
@@ -189,47 +192,61 @@ void ProtectedModeStart(PROTECTED_MODE_STARTUP_DATA * pStartup)
                _inpw(pStartup->msp.SMIEAddr) & ~1);
     }
 
-    // init pAuxMemory to page-aligned address and zero it
-    PROTECTED_MODE_STARTUP_MEMORY far * pAuxMemory =
-        (PROTECTED_MODE_STARTUP_MEMORY far *)
+    // init pAuxMemory to page-aligned address and zero its 2 first pages
+    PageTable huge * pPageTableBuffer =
+        (PageTable huge *)
         ( pTmp + (0xFFF & -long(GetFlatAddress(pTmp))));
 
-    pAuxMemory = (PROTECTED_MODE_STARTUP_MEMORY far *) NormalizeHugePointer(pAuxMemory);
-    _fmemset( pAuxMemory, 0, sizeof *pAuxMemory);
+    pPageTableBuffer = (PageTable huge *) NormalizeHugePointer(pPageTableBuffer);
+    _fmemset( pPageTableBuffer, 0, 0x2000);
+    // save the physical address for protected mode init
+    pAuxMemory->PageTableAddress = GetFlatAddress(pPageTableBuffer);
 
     TRACE("Startup memory aligned address %Fp\n", pAuxMemory);
     // Build starting page table.
     // The table consists of 3 pages - one is first level, two other -
     // second level for 8 MB space.
     // Map low memory 1:1
-    pAuxMemory->TableDir[0] = GetFlatAddress(& pAuxMemory->PageDir0) |
-                              (PAGE_DIR_FLAG_PRESENT | PAGE_DIR_FLAG_WRITABLE
-                                  | PAGE_DIR_FLAG_ACCESSED);
-    pAuxMemory->TableDir[1] = GetFlatAddress(& pAuxMemory->PageDir1) |
-                              (PAGE_DIR_FLAG_PRESENT | PAGE_DIR_FLAG_WRITABLE
-                                  | PAGE_DIR_FLAG_ACCESSED);
 
-    TRACE("Page directory address=%Fp, TD[0]=%lX, TD[1]=%lX\n",
-          pAuxMemory->TableDir, pAuxMemory->TableDir[0], pAuxMemory->TableDir[1]);
-    // fill PageDir0 to 1:1 mapping
-    DWORD addr;
-    for (addr = 0; addr < 0x400000LU; addr += 0x1000)
+    pPageTableBuffer->PageDirPointerTable[0] = GetFlatAddress(& pPageTableBuffer->PageDirectory) |
+                                               (PAGE_DIR_FLAG_PRESENT | PAGE_DIR_FLAG_ACCESSED);
+    pPageTableBuffer->PageDirPointerTable[1] = 0;
+
+    // initialize 16 page directory elements (each covers 2 MB of VA)
+    DWORD addr = 0;
+    unsigned i = 0;
+    for (i = 0; i < 32; i+=2)
     {
-        pAuxMemory->PageDir0[addr / 0x1000u] = addr |
-                                               (PAGE_DIR_FLAG_PRESENT | PAGE_DIR_FLAG_WRITABLE
-                                                   | PAGE_DIR_FLAG_ACCESSED | PAGE_DIR_FLAG_DIRTY);
-        pAuxMemory->PageDir1[addr / 0x1000u] = (addr + 0x400000LU) |
-                                               (PAGE_DIR_FLAG_PRESENT | PAGE_DIR_FLAG_WRITABLE
-                                                   | PAGE_DIR_FLAG_ACCESSED | PAGE_DIR_FLAG_DIRTY);
+        DWORD far * PageTable = (DWORD far *)NormalizeHugePointer(pPageTableBuffer->PageTableArray + i * 512);
+
+        pPageTableBuffer->PageDirectory[i] = GetFlatAddress(PageTable) |
+                                             (PAGE_DIR_FLAG_PRESENT | PAGE_DIR_FLAG_WRITABLE
+                                                 | PAGE_DIR_FLAG_ACCESSED);
+        pPageTableBuffer->PageDirectory[i+1] = 0;
+
+        for (unsigned j = 0; j < 1024; j+=2, addr += 0x1000)
+        {
+            PageTable[j] = addr |
+                           (PAGE_DIR_FLAG_PRESENT | PAGE_DIR_FLAG_WRITABLE
+                               | PAGE_DIR_FLAG_ACCESSED | PAGE_DIR_FLAG_DIRTY);
+            PageTable[j+1] = 0;
+        }
     }
-    // fill PageDir1 to map the program area from 4MB virtual
-    for (addr = 0; addr < pStartup->ProgramSize; addr += 0x1000)
+
+    for (; i < 1024; i++)
     {
-        pAuxMemory->PageDir1[addr / 0x1000u]
-            = (addr + GetFlatAddress(pStartup->pProgramBase))
+        pPageTableBuffer->PageDirectory[i] = 0;
+    }
+    // fill PageDir0 to 1:1 mapping
+
+    // fill PageDir1 to map the program area from 4MB virtual
+    for (addr = GetFlatAddress(pStartup->pProgramBase);
+         addr < pStartup->ProgramSize + GetFlatAddress(pStartup->pProgramBase) + 0xFFF; addr += 0x1000)
+    {
+        pPageTableBuffer->PageTableArray[(addr / 0x1000u) * 2]
+            = addr
                 | (PAGE_DIR_FLAG_PRESENT | PAGE_DIR_FLAG_WRITABLE
                     | PAGE_DIR_FLAG_ACCESSED | PAGE_DIR_FLAG_DIRTY);
-        TRACE("Program map[%d]=%lX  ", int(addr / 0x1000u), pAuxMemory->PageDir1[addr / 0x1000u]);
     }
 
     // Create starting interrupt table
@@ -316,7 +333,7 @@ Offset  Size    Description
     *--pStack = 9*8;  // cs
     *--pStack = pStartup->ProgramEntry;  // eip
 
-    static DWORD pdt_addr = GetFlatAddress( & pAuxMemory->TableDir);
+    static DWORD pdt_addr = pAuxMemory->PageTableAddress;
     pAuxMemory->TSS._cr3 = pdt_addr;
     pAuxMemory->TSS.IOMapOffset = WORD(DWORD( & pAuxMemory->TSS.IOMap) - DWORD( & pAuxMemory->TSS));
 
@@ -361,6 +378,11 @@ pmode:
         // enable paging
         __emit 0x66 __asm mov     ax,word ptr pdt_addr // mov eax, pdt_addr
         __emit 0x0F __asm __emit 0x22 __asm __emit 0xD8    // mov  cr3, eax
+        // mov  eax,0x00000020  // PAE enable
+        _emit 66h _asm _emit 0B8h _asm _emit 0x20 _asm _emit 0x00 _asm _emit 0x00 _asm _emit 0x00
+        // mov  cr4, eax
+        __emit 0x0F __asm __emit 0x22 __asm __emit 0xE0
+
         // mov  eax,0x80000001  // PE | PG
         _emit 66h _asm _emit 0B8h _asm _emit 1 _asm _emit 0 _asm _emit 0 _asm _emit 0x80
         // mov  cr0, eax

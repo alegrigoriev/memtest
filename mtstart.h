@@ -12,30 +12,6 @@ typedef unsigned char BYTE;
 typedef unsigned short WORD;
 typedef unsigned long DWORD;
 
-struct MemorySizes
-{
-    long pBase1;
-    long pSize1;
-    long pBase2;
-    long pSize2;
-    long pBase3;
-    long pSize3;
-};
-
-struct BIOS_MEMORY_MAP
-{
-    WORD cbSize;
-    DWORD cbLocalMemSize1M16M;  // size of local memory between 1M-16M
-    DWORD cbLocalMemSize16M4G;  // size of local memory between 16M-4G
-    DWORD cbSystemMemSize1M16M;  // size of system memory between 1M-16M
-    DWORD cbSystemMemSize16M4G;  // size of system memory between 16M-4G
-    DWORD cbCacheableMemSize1M16M;  // size of cacheable memory between 1M-16M
-    DWORD cbCacheableMemSize16M4G;  // size of cacheable memory between 16M-4G
-    DWORD cbNonSystemMemOffset1M16M;  // size of non-system memory between 1M-16M
-    DWORD cbNonSystemMemOffset16M4G;  // size of non-system memory between 16M-4G
-    DWORD dwDummy[2];
-};
-
 struct MSDOS_EXE_HEADER {
     char mz[0x3c];
     DWORD PE_offset;

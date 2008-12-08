@@ -32,6 +32,8 @@ extern "C" {
 
 typedef int BOOL;
 typedef unsigned long DWORD;
+typedef BYTE * __ptr64 PHYSICAL_ADDR;
+typedef ULONGLONG SIZET64;
 
 const size_t cache1_preload_size = 4096;
 const size_t cache2_preload_size = 1024 * 128;
@@ -155,10 +157,10 @@ int CheckForKeyStandalone();
 int CheckForKeyWin() { return 0; }
 int (* CheckForKey)() = CheckForKeyStandalone;
 
-char * pMemoryToTestStart;
-char * pMemoryToTestEnd;
+PHYSICAL_ADDR pMemoryToTestStart;
+PHYSICAL_ADDR pMemoryToTestEnd;
 
-char * const TestStartVirtAddr = (char*)0x800000;  // 8MB
+char * const TestStartVirtAddr = (char*)0x1000000;  // 16MB
 
 class MemtestObject
 {
@@ -200,21 +202,17 @@ LONG MemtestObject::m_NumErrorsFound;
 ////////////////////////////////////////////////////
 // Page directory stuff
 
-DWORD * PageTablePtr;    // VIRTUAL address of page table
+ULONGLONG * PageTablePtr;    // VIRTUAL address of page table
 size_t PageTableSize;
-#define PAGE_4M 0x80    // 4 megabyte page
-#define PAGE_CACHE_DISABLE 0x10
-#define PAGE_WRITE_THROUGH 0x8
+#define PAGE_DIR_FLAG_LARGE_PAGE 0x80    // 4 megabyte page
 
-DWORD PageTableOffset;  // offset (in DWORDs) of page
-// directory virtual address relative to physical
+PHYSICAL_ADDR PageTablePhysicalAddr;
 
 void * TopVirtualAddress;
 void * TopUsedAddress;  // top virtual address used by the program and tables
-char * TopProgrmaAddress;
 size_t MemoryInUseByProgram;    // including page tables
 
-void * CurrentPhysProgramLocation;
+PHYSICAL_ADDR CurrentPhysProgramLocation;
 char * TopProgramAddress;
 // Current Processor features
 #define CPUID_4MB_PAGES     8
@@ -230,10 +228,11 @@ char * TopProgramAddress;
 #define MC0_STATUS                  0x401
 #define MC0_CTL                     0x400
 
-#define CR4_4MB_PAGES_ENABLED 0x10
-#define CR4_MACHINE_CHECK_ENABLED 0x40    // bit 6
+#define CR4_4MB_PAGES_ENABLED       0x10
+#define CR4_PAE_ENABLED             0x20
+#define CR4_MACHINE_CHECK_ENABLED   0x40    // bit 6
 
-BOOL f4MBPagesSupported;
+BOOL LargePagesSupported;
 
 //////////////////////////////////////////////////////////////
 //// screen stuff
@@ -256,19 +255,24 @@ void DetectInstalledMemory(MEMTEST_STARTUP_PARAMS * pTestParams);
 BOOL TestPageForPresence(void * VirtAddr, BOOL FastDetect);
 DWORD GetPageFlags(void * VirtAddr);
 void ModifyPageFlags(void * VirtAddr, size_t size, DWORD SetFlags,
-                     DWORD ResetFlags = 0);
-void * GetPhysAddr(void * VirtAddr);    // convert physical to virtual
-void MapVirtualToPhysical(void * VirtAddr, void * PhysAddr, size_t size);
-void InitVirtualToPhysical(void * VirtAddr, void * PhysAddr, size_t size,
-                           DWORD * pPageTable);
-void InitPageTable(void * VirtPageDirAddress, size_t BufSize);
+                     DWORD ResetFlags = 0, ULONGLONG *MapTable = PageTablePtr);
+PHYSICAL_ADDR GetPhysAddr(void * VirtAddr);    // convert physical to virtual
+void MapVirtualToPhysical(void * VirtAddr, PHYSICAL_ADDR PhysAddr, size_t size,
+                          ULONGLONG* MapTable = PageTablePtr,
+                          DWORD Flags = PAGE_DIR_FLAG_PRESENT
+                                        | PAGE_DIR_FLAG_WRITABLE
+                                        | PAGE_DIR_FLAG_ACCESSED);
+
+#define MAP_VIRTUAL_TO_PHYS_NO_INVTLB 0x80000000
+
+void InitPageTable(ULONGLONG * VirtPageDirAddress, size_t BufSize);
 void InitGate(GATE & g, WORD selector, void * offset, WORD flags);
 // init interrupt table
 void InitInterruptTable(GATE * Addr);
 // move the program and all the tables to next 4 MByte
 void RelocateProgram(void);
-size_t MapMemoryToTest(void * ProgramRegion, size_t ProgramRegionSize,
-                       void * PhysMemoryBottom, void * PhysMemoryTop);
+size_t MapMemoryToTest(PHYSICAL_ADDR ProgramRegion, size_t ProgramRegionSize,
+                       PHYSICAL_ADDR PhysMemoryBottom, PHYSICAL_ADDR PhysMemoryTop);
 
 
 extern "C" {
@@ -605,6 +609,19 @@ void __stdcall MemoryErrorStandalone(void * addr,
     my_sprintf(buffer, "\nAddr: %x: written: %x%x, read: %x%x\n",
                GetPhysAddr(addr), ref_high, ref_low, data_high, data_low);
     my_puts(buffer, TRUE, 0x0f00); // TRUE - it is error message
+}
+
+size_t CalculatePageTableSize(size_t LastVirtualAddress)
+{
+    // LastVirtualAddress is area size-1. For example, for 4GB, it is 0xFFFFFFFF
+    size_t TableSize = 0x1000; // page directory pointer table
+    while (LastVirtualAddress >= 0x20000000UL)
+    {
+        TableSize += 0x1000 + 0x200 * 0x1000;   // page directory + 512 page tables
+        LastVirtualAddress -= 0x20000000UL;
+    }
+    TableSize += 0x1000 + ((LastVirtualAddress + 0x1FFFFF) / 0x200000) * 0x1000;
+    return TableSize;
 }
 
 DWORD __stdcall WritePseudoRandom(void * addr,
@@ -2176,7 +2193,7 @@ DWORD TestThread::DoRandomMemoryTest(char * addr, size_t _size, DWORD seed,
         if (erraddr >= addr && erraddr < addr + _size)
         {
             *erraddr ^= err;
-            my_printf(TRUE, "\nError introduced at %x, data = %x\r",
+            my_printf(TRUE, "\nError introduced at %p, data = %x\r",
                       GetPhysAddr(erraddr), err);
         }
     }
@@ -2206,18 +2223,18 @@ DWORD TestThread::DoRandomMemoryTest(char * addr, size_t _size, DWORD seed,
 }
 
 #ifdef _DEBUG
-void VerifyPageTable(void * pPhysStart, void * pPhysEnd,
+void VerifyPageTable(PHYSICAL_ADDR pPhysStart, PHYSICAL_ADDR pPhysEnd,
                      void * pVirtStart, size_t TestSize,
-                     void * TestCodePhysAddr, size_t TestCodeSize)
+                     PHYSICAL_ADDR TestCodePhysAddr, size_t TestCodeSize)
 {
     // check that correct page table is used
     // check that the mapped memory does not include any memory outside the range
     // and doesn't include the program memory
-    void * pVirtEnd = (char*)pVirtStart + TestSize;
     char * p = (char*)pVirtStart;
+    void * pVirtEnd = p + TestSize;
     char s[128];
-    void * PhysAddr;
-    my_sprintf(s, "Verifying the page table... Va=%x, siz=%x, code=%x\r", pVirtStart,
+    PHYSICAL_ADDR PhysAddr;
+    my_sprintf(s, "Verifying the page table... Va=%x, siz=%x, code=%p\r", pVirtStart,
                TestSize, TestCodePhysAddr);
     my_puts(s);
     if (pVirtEnd < pVirtStart)
@@ -2227,10 +2244,10 @@ void VerifyPageTable(void * pPhysStart, void * pPhysEnd,
     }
     PhysAddr = GetPhysAddr(VerifyPageTable);
     if (PhysAddr < TestCodePhysAddr
-        || PhysAddr >= (char*)TestCodePhysAddr+TestCodeSize)
+        || PhysAddr >= TestCodePhysAddr+TestCodeSize)
     {
-        my_sprintf(s, "\nProgram PhysAddr(%x)=%x is out of range (%x-%x)\n", VerifyPageTable,
-                   PhysAddr, TestCodePhysAddr, (char*)TestCodePhysAddr+TestCodeSize);
+        my_sprintf(s, "\nProgram PhysAddr(%x)=%p is out of range (%p-%p)\n", VerifyPageTable,
+                   PhysAddr, TestCodePhysAddr, TestCodePhysAddr+TestCodeSize);
         my_puts(s, TRUE);
     }
 
@@ -2248,16 +2265,16 @@ void VerifyPageTable(void * pPhysStart, void * pPhysEnd,
             my_sprintf(s, "\nPhysAddr(%x)=%x >= pMemoryToTestEnd\n", p, PhysAddr);
             my_puts(s, TRUE);
         }
-        if (PhysAddr >= (void*)0xA0000 && PhysAddr < (void*)0x100000)
+        if (PhysAddr >= (PHYSICAL_ADDR)0xA0000 && PhysAddr < (PHYSICAL_ADDR)0x100000)
         {
-            my_sprintf(s, "\nPhysAddr(%x)=%x in A0000-100000 range\n", p, PhysAddr);
+            my_sprintf(s, "\nPhysAddr(%x)=%p in A0000-100000 range\n", p, PhysAddr);
             my_puts(s, TRUE);
         }
         if (PhysAddr >= CurrentPhysProgramLocation
-            && PhysAddr < (char*)CurrentPhysProgramLocation + MemoryInUseByProgram)
+            && PhysAddr < CurrentPhysProgramLocation + MemoryInUseByProgram)
         {
-            my_sprintf(s, "\nPhysAddr(%x)=%x in program range(%x-%x)\n", p, PhysAddr,
-                       CurrentPhysProgramLocation, (char*)CurrentPhysProgramLocation + MemoryInUseByProgram);
+            my_sprintf(s, "\nPhysAddr(%x)=%p in program range(%p-%p)\n", p, PhysAddr,
+                       CurrentPhysProgramLocation, CurrentPhysProgramLocation + MemoryInUseByProgram);
             my_puts(s, TRUE);
         }
         // check that the page is mapped only once
@@ -2266,7 +2283,7 @@ void VerifyPageTable(void * pPhysStart, void * pPhysEnd,
             if (GetPhysAddr(p1) == PhysAddr
                 && p1 != p)
             {
-                my_sprintf(s, "\nPhysAddr %x mapped at %x and %x\n", PhysAddr, p, p1);
+                my_sprintf(s, "\nPhysAddr %p mapped at %x and %x\n", PhysAddr, p, p1);
                 my_puts(s, TRUE);
             }
         }
@@ -2401,7 +2418,7 @@ void PrintMachinePerformance(MEMTEST_STARTUP_PARAMS * pTestParams)
     my_printf(TRUE, "CPU clock rate: %d MHz\n", (cpu_clock + 50000) / 100000);
 
     // measure L2 cache read/write speed
-    MapVirtualToPhysical((void*)0x800000, (void*)0x800000, 0x400000);
+    MapVirtualToPhysical((void*)0x800000, (PHYSICAL_ADDR)0x800000, 0x400000);
 
     // reset nocache and writethrough flags
     ModifyPageFlags((void*)0x800000, 0x400000, 0,
@@ -2467,6 +2484,28 @@ void PrintMachinePerformance(MEMTEST_STARTUP_PARAMS * pTestParams)
     // find how much memory is cached
 }
 
+bool IsPageInTheSystemMap(PHYSICAL_ADDR addr, MEMTEST_STARTUP_PARAMS const * pTestParams)
+{
+    for (unsigned i = 0; i < pTestParams->MemoryMapUsed; i++)
+    {
+        LARGE_INTEGER start;
+        LARGE_INTEGER size;
+        start.LowPart = pTestParams->Map[i].BaseAddressLow;
+        start.HighPart = pTestParams->Map[i].BaseAddressHigh;
+
+        size.LowPart = pTestParams->Map[i].RangeSizeLow;
+        size.HighPart = pTestParams->Map[i].RangeSizeHigh;
+
+        if (addr >= PHYSICAL_ADDR(start.QuadPart)
+            && size.QuadPart >= 0x1000
+            && addr <= PHYSICAL_ADDR(start.QuadPart + size.QuadPart))
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
 // InitMemtest returns address of new stack
 char * InitMemtest(MEMTEST_STARTUP_PARAMS * pTestParams)
 {
@@ -2493,44 +2532,41 @@ char * InitMemtest(MEMTEST_STARTUP_PARAMS * pTestParams)
     srand(pTestParams->RandomSeed);
 #endif
 
-    if ((pTestParams->CpuFeatures & CPUID_4MB_PAGES)
-        && 0 == (pTestParams->m_Flags & TEST_FLAGS_NOLARGEPAGES))
+    if (0 == (pTestParams->m_Flags & TEST_FLAGS_NOLARGEPAGES))
     {
-        f4MBPagesSupported = TRUE;
+        LargePagesSupported = TRUE;
         // enable 4MB page size extension in CR4
-        __writecr4(__readcr4() | CR4_4MB_PAGES_ENABLED);
+        //__writecr4(__readcr4() | CR4_4MB_PAGES_ENABLED);
+        // When PAE is enabled, large pages are always supported
     }
 
     // Detect installed memory size
-    TopVirtualAddress = (void*)0x800000;   // 8 MB
+    TopVirtualAddress = (void*)0x1000000;   // 16 MB
+    PageTablePtr = (ULONGLONG*)__readcr3();
+    // physical address now is the same as virtual
+    PageTablePhysicalAddr = (PHYSICAL_ADDR)PageTablePtr;
 
-    _asm {
-        mov     eax,CR3
-        mov     PageTablePtr,eax
-    }
-
-    PageTableOffset = 0;    // physical address is the same as virtual
-    // test the memory starting from 100000 (or lower address to test)
+    // test the memory starting from 1000000 (or lower address to test)
     // to the last address found (or higher address to test)
 
     DetectInstalledMemory( & TestParams);
 
-    if (TestParams.MemoryTop < 0x800000)
+    if (TestParams.MemoryTop < 32)  // megabytes
     {
-        my_puts("Too little memory installed (< 8M).\n"
+        my_puts("Too little memory installed (< 32M).\n"
                 "Press RESET button"
                 " or turn power off then on to restart the computer.", FALSE, 0x0F00);
         while(1) CheckForKey();
     }
-    pMemoryToTestStart = (char*)TestParams.MemoryStart;
-    pMemoryToTestEnd = (char*)TestParams.MemoryTop;
+    pMemoryToTestStart = (PHYSICAL_ADDR)(TestParams.MemoryStart * 0x100000ULL);
+    pMemoryToTestEnd = (PHYSICAL_ADDR)(TestParams.MemoryTop * 0x100000ULL);
 
     my_puts("To terminate test and restart the computer,\n"
             "press Ctrl+Alt+Del or RESET button, or turn power off then on\n", FALSE);
 
     my_printf(TRUE, "Memory to test: %x to %x (%d megabytes)\n",
               TestParams.MemoryStart, TestParams.MemoryTop,
-              (TestParams.MemoryTop - TestParams.MemoryStart) >> 20);
+              (TestParams.MemoryTop - TestParams.MemoryStart));
 
     // allocate extra memory after the program for stack, TSS, GDT, IDT
     TopProgramAddress = (char*)(TestParams.ProgramTop);
@@ -2547,13 +2583,12 @@ char * InitMemtest(MEMTEST_STARTUP_PARAMS * pTestParams)
     TopProgramAddress = (char*)(pTss) + sizeof (_TSS);
 
     // init new page directory/table
-    DWORD * pPageDirectory = (DWORD*)(DWORD(TopProgramAddress + 0xFFF) & ~0xFFF);
+    ULONGLONG * pPageDirectory = (ULONGLONG*)(ULONG_PTR(TopProgramAddress + 0xFFF) & ~0xFFF);
     // create new page table
-    PageTableSize = 0x1000 + (pMemoryToTestEnd - pMemoryToTestStart + 0x800000U) / 0x400;
-    PageTableSize = (PageTableSize + 0xFFF) & ~0xFFF;
+    PageTableSize = CalculatePageTableSize(0xFFFFFFFF);
 
     TopUsedAddress = PageTableSize + (char*)pPageDirectory;
-    MemoryInUseByProgram = DWORD(TopUsedAddress) - 0x400000;
+    MemoryInUseByProgram = ULONG_PTR(TopUsedAddress) - 0x400000;
     CurrentPhysProgramLocation = NULL;
 
     InitPageTable(pPageDirectory, PageTableSize);
@@ -2589,11 +2624,10 @@ char * InitMemtest(MEMTEST_STARTUP_PARAMS * pTestParams)
     __asm ltr ax
 
     // switch to new page table
+    PageTablePhysicalAddr = GetPhysAddr(pPageDirectory);
     PageTablePtr = pPageDirectory;
-    DWORD * PhysPageTablePtr = (DWORD*)GetPhysAddr(pPageDirectory);
-    PageTableOffset = pPageDirectory - PhysPageTablePtr;
 
-    SwitchPageTable(PhysPageTablePtr);
+    SwitchPageTable(PageTablePhysicalAddr);
 
     // init system timer to 10 ms rounds
     _outp(0x43, 0x34);  // command
@@ -2679,8 +2713,26 @@ extern "C" void _cdecl MemtestStartup(MEMTEST_STARTUP_PARAMS * pTestParams)
     while(1);
 }
 
+ULONGLONG* GetPageDirectoryElement(void * VirtAddr, ULONGLONG * PageTable)
+{
+    // one page for page-directory-pointer-table
+    // then, per each GB, one page of page directory + 512 pages of page table
+    unsigned PageDirectoryIndex = (ULONG_PTR(VirtAddr) >> 30);
+    unsigned PageTableIndex = (ULONG_PTR(VirtAddr) >> 21) & 0x1FF;
+    return PageTable + 512 + 512 * 513 * PageDirectoryIndex + PageTableIndex;
+}
+
+ULONGLONG* GetPageTableElement(void * VirtAddr, ULONGLONG * PageTable)
+{
+    unsigned PageDirectoryIndex = (ULONG_PTR(VirtAddr) >> 30);
+    unsigned PageTableIndex = (ULONG_PTR(VirtAddr) >> 21) & 0x1FF;
+    unsigned PageIndex = (ULONG_PTR(VirtAddr) >> 12) & 0x1FF;
+
+    return PageTable + 512 + 512 * (513 * PageDirectoryIndex +
+                                    1 + PageTableIndex) + PageIndex;
+}
     // convert physical to virtual
-void * GetPhysAddr(void * VirtAddr)
+PHYSICAL_ADDR GetPhysAddr(void * VirtAddr)
 {
     if (UnderWindows)
     {
@@ -2695,32 +2747,31 @@ void * GetPhysAddr(void * VirtAddr)
 #endif
     // parse page table manually
     DWORD Addr = (DWORD) VirtAddr;
-    DWORD TableDirectoryEntry = PageTablePtr[Addr >> 22];
-    if (TableDirectoryEntry & PAGE_4M)
+
+    ULONGLONG PageDirectoryElement = *GetPageDirectoryElement(VirtAddr, PageTablePtr);
+    if (PageDirectoryElement & PAGE_DIR_FLAG_LARGE_PAGE)
     {
-        // page is 4 megabyte
-        return (void *)((TableDirectoryEntry & 0xFFC00000) +
-                        (Addr & 0x003FFFFF));
+        // page is 2 megabyte
+        return PHYSICAL_ADDR((PageDirectoryElement & -0x00200000LL) +
+                             (Addr & 0x001FFFFF));
     }
     else
     {
-        DWORD * PageDirectory =
-            ((DWORD *)(TableDirectoryEntry & 0xFFFFF000))
-            + PageTableOffset;
-        DWORD PageDirectoryEntry =
-            PageDirectory[(Addr & 0x3FF000) >> 12];
-        return (void*)((PageDirectoryEntry & 0xFFFFF000) +
-                       (Addr & 0x00000FFF));
+        ULONGLONG PageTableElement = *GetPageTableElement(VirtAddr, PageTablePtr);
+        return PHYSICAL_ADDR((PageTableElement & -0x00001000LL) +
+                             (Addr & 0x00000FFF));
     }
 }
 
-void MapVirtualToPhysical(void * VirtAddr, void * PhysAddr, size_t size)
+void MapVirtualToPhysical(void * VirtAddr, PHYSICAL_ADDR PhysAddr, size_t size,
+                          ULONGLONG* MapTable,
+                          DWORD Flags)
 {
 #ifdef _DEBUG
     if (VirtAddr >= TopVirtualAddress
-        || DWORD(VirtAddr) & 0xFFF
-        || DWORD(PhysAddr) & 0xFFF
-        || size & 0xFFF)
+        || (ULONG_PTR(VirtAddr) & 0xFFF)
+        || (ULONGLONG(PhysAddr) & 0xFFF)
+        || (size & 0xFFF))
     {
         my_puts("Error In MapVirtualToPhysical", FALSE);
         while(1);
@@ -2728,110 +2779,71 @@ void MapVirtualToPhysical(void * VirtAddr, void * PhysAddr, size_t size)
 #endif
     while(size)
     {
-        // if 4MB pages are supported, use this feature for 4MB
+        // if 2MB pages are supported, use this feature for 4MB
         // aligned regions
-        if (f4MBPagesSupported && size >= 0x400000
-            && (DWORD(VirtAddr) & 0x3FFFFF) == 0
-            && (DWORD(PhysAddr) & 0x3FFFFF) == 0)
-        {
-            // PageNum: index of 4 MB page
-            DWORD PageNum = DWORD(VirtAddr) >> 22;
-            // modify table directory entry
-            PageTablePtr[PageNum] = (PageTablePtr[PageNum] & 0xFFF)
-                                    | PAGE_4M | DWORD(PhysAddr);
-            // modify also page directory, just for case if page
-            // size will change afterwards
-            // pPageDir: virtual address of page directory
-            // Page directories are placed just after table directory
-            DWORD * pPageDir = PageTablePtr
-                               + 1024 * (PageNum + 1);
-            for (int i = 0; i < 0x400; i++, pPageDir++) // 1024 pages
-            {
-                pPageDir[i] = (pPageDir[i] & 0xFFF) | DWORD(PhysAddr);
-                __invlpg(VirtAddr);
-                VirtAddr = 0x1000 + (char*)VirtAddr;
-                PhysAddr = 0x1000 + (char*)PhysAddr;
-            }
-            size -= 0x400000;
-        }
-        else
-        {
-            // TableNum: index of page directory
-            DWORD TableNum = DWORD(VirtAddr) >> 22;
-            // pPageDir: address of page directory
-            DWORD * pPageDir = PageTablePtr
-                               + 0x400 * (TableNum + 1);
-            // restore table directory entry to make it pointing
-            // to the page directory
-            PageTablePtr[TableNum] = (PageTablePtr[TableNum]
-                                         & (0xFFF & ~PAGE_4M)) | DWORD(pPageDir - PageTableOffset);
-            pPageDir += (DWORD(VirtAddr) & 0x003FF000) >> 12;
-            *pPageDir = (*pPageDir & 0x00000FFF) | DWORD(PhysAddr);
-            __invlpg(VirtAddr);
-            VirtAddr = 0x1000 + (char*)VirtAddr;
-            PhysAddr = 0x1000 + (char*)PhysAddr;
-            size -= 0x1000;
-        }
-    }
-}
+        ULONGLONG *PageDirectoryElement = GetPageDirectoryElement(VirtAddr, MapTable);
+        ULONGLONG *PageTableElement = GetPageTableElement(VirtAddr, MapTable);
 
-// change mapping in non-active page table being initialized
-void InitVirtualToPhysical(void * VirtAddr, void * PhysAddr, size_t size,
-                           DWORD * pPageTable)
-{
-#ifdef _DEBUG
-    if (VirtAddr >= TopVirtualAddress
-        || DWORD(VirtAddr) & 0xFFF
-        || DWORD(PhysAddr) & 0xFFF
-        || DWORD(pPageTable) & 0xFFF
-        || size & 0xFFF)
-    {
-        my_puts("Error In InitVirtualToPhysical", FALSE);
-        while(1);
-    }
-#endif
-    while(size)
-    {
-        // if 4MB pages are supported, use this feature for 4MB
-        // aligned regions
-        if (f4MBPagesSupported && size >= 0x400000
-            && (DWORD(VirtAddr) & 0x3FFFFF) == 0
-            && (DWORD(PhysAddr) & 0x3FFFFF) == 0)
+        if (LargePagesSupported && size >= 0x200000
+            && (ULONG_PTR(VirtAddr) & 0x1FFFFF) == 0
+            && (ULONGLONG(PhysAddr) & 0x1FFFFF) == 0)
         {
-            // PageNum: index of 4 MB page
-            DWORD PageNum = DWORD(VirtAddr) >> 22;
+            // PageNum: index of 2 MB page
             // modify table directory entry
-            pPageTable[PageNum] = (pPageTable[PageNum] & 0xFFF)
-                                  | PAGE_4M | DWORD(PhysAddr);
+            *PageDirectoryElement = ULONGLONG(PhysAddr)
+                                    | (Flags & 0xFFF)
+                                    | PAGE_DIR_FLAG_PRESENT
+                                    | PAGE_DIR_FLAG_WRITABLE
+                                    | PAGE_DIR_FLAG_LARGE_PAGE;
+
             // modify also page directory, just for case if page
             // size will change afterwards
             // pPageDir: virtual address of page directory
             // Page directories are placed just after table directory
-            DWORD * pPageDir = pPageTable
-                               + 1024 * (PageNum + 1);
-            for (int i = 0; i < 0x400; i++, pPageDir++) // 1024 pages
+
+            for (int i = 0; i < 512; i++, PageTableElement++) // 512 pages
             {
-                pPageDir[i] = (pPageDir[i] & 0xFFF) | DWORD(PhysAddr);
+                PageTableElement[i] = ULONGLONG(PhysAddr)
+                                      | (Flags & 0xFFF)
+                                      | PAGE_DIR_FLAG_PRESENT
+                                      | PAGE_DIR_FLAG_WRITABLE;
+
+                if (0 == (Flags & MAP_VIRTUAL_TO_PHYS_NO_INVTLB))
+                {
+                    __invlpg(VirtAddr);
+                }
+
                 VirtAddr = 0x1000 + (char*)VirtAddr;
-                PhysAddr = 0x1000 + (char*)PhysAddr;
+                PhysAddr = 0x1000 + PhysAddr;
+                size -= 0x1000;
             }
-            size -= 0x400000;
         }
         else
         {
             // TableNum: index of page directory
-            DWORD TableNum = DWORD(VirtAddr) >> 22;
-            // pPageDir: address of page directory
-            DWORD * pPageDir = pPageTable
-                               + 1024 * (TableNum + 1);
             // restore table directory entry to make it pointing
             // to the page directory
-            pPageTable[TableNum] = (pPageTable[TableNum]
-                                       & (0xFFF & ~PAGE_4M)) | DWORD(GetPhysAddr(pPageDir));
-            pPageDir += (DWORD(VirtAddr) & 0x003FF000) >> 12;
-            *pPageDir = (*pPageDir & 0x00000FFF) | DWORD(PhysAddr);
+            if (*PageDirectoryElement & PAGE_DIR_FLAG_LARGE_PAGE)
+            {
+                *PageDirectoryElement =
+                    (ULONGLONG(GetPhysAddr(PageTableElement)) & ~0xFFFULL)
+                    | PAGE_DIR_FLAG_PRESENT
+                    | PAGE_DIR_FLAG_WRITABLE
+                    | (Flags & (0xFFF & ~PAGE_DIR_FLAG_LARGE_PAGE));
+            }
+
+            *PageTableElement = ULONGLONG(PhysAddr)
+                                | PAGE_DIR_FLAG_PRESENT
+                                | PAGE_DIR_FLAG_WRITABLE
+                                | (Flags & (0xFFF & ~PAGE_DIR_FLAG_LARGE_PAGE));
+
+            if (0 == (Flags & MAP_VIRTUAL_TO_PHYS_NO_INVTLB))
+            {
+                __invlpg(VirtAddr);
+            }
+
             VirtAddr = 0x1000 + (char*)VirtAddr;
-            PhysAddr = 0x1000 + (char*)PhysAddr;
+            PhysAddr = 0x1000 + PhysAddr;
             size -= 0x1000;
         }
     }
@@ -2841,33 +2853,28 @@ DWORD GetPageFlags(void * VirtAddr)
 {
 #ifdef _DEBUG
     if (VirtAddr >= TopVirtualAddress
-        || DWORD(VirtAddr) & 0xFFF)
+        || ULONG_PTR(VirtAddr) & 0xFFF)
     {
         my_puts("Error In GetPageFlags", FALSE);
         while(1);
     }
 #endif
-    // TableNum: index of 4 GB page
-    DWORD TableNum = DWORD(VirtAddr) >> 22;
-    // pPageDir: virtual address of page directory
-    DWORD * pPageDir = PageTablePtr
-                       + 1024 * (TableNum + 1);
-    if (PageTablePtr[TableNum] & PAGE_4M)
+    ULONGLONG PageDirectoryElement = *GetPageDirectoryElement(VirtAddr, PageTablePtr);
+    if (PageDirectoryElement & PAGE_DIR_FLAG_LARGE_PAGE)
     {
-        // modify table directory entry
-        return PageTablePtr[TableNum] & 0xFFF & ~PAGE_4M;
+        // return table directory entry
+        return PageDirectoryElement & 0xFFF & ~PAGE_DIR_FLAG_LARGE_PAGE;
     }
     else
     {
-        // restore table directory entry to make it pointing
-        // to the page directory
-        pPageDir += (DWORD(VirtAddr) & 0x003FF000) >> 12;
-        return *pPageDir & 0xFFF;
+        // get page directory entry
+        ULONGLONG PageTableElement = *GetPageTableElement(VirtAddr, PageTablePtr);
+        return PageTableElement & 0xFFF;
     }
 }
 
 void ModifyPageFlags(void * VirtAddr, size_t size, DWORD SetFlags,
-                     DWORD ResetFlags)
+                     DWORD ResetFlags, ULONGLONG *MapTable)
 {
 #ifdef _DEBUG
     if (VirtAddr >= TopVirtualAddress
@@ -2882,38 +2889,54 @@ void ModifyPageFlags(void * VirtAddr, size_t size, DWORD SetFlags,
 #endif
     while(size)
     {
-        // TableNum: index of 4 GB page
-        DWORD TableNum = DWORD(VirtAddr) >> 22;
-        // pPageDir: virtual address of page directory
-        DWORD * pPageDir = PageTablePtr
-                           + 1024 * (TableNum + 1);
-        if (f4MBPagesSupported && size >= 0x400000
-            && (DWORD(VirtAddr) & 0x3FFFFF) == 0)
+        // if 4MB pages are supported, use this feature for 4MB
+        // aligned regions
+        ULONGLONG *PageDirectoryElement = GetPageDirectoryElement(VirtAddr, MapTable);
+        ULONGLONG *PageTableElement = GetPageTableElement(VirtAddr, MapTable);
+
+        if (LargePagesSupported && size >= 0x200000
+            && (ULONG_PTR(VirtAddr) & 0x1FFFFF) == 0
+            && (*PageDirectoryElement & PAGE_DIR_FLAG_LARGE_PAGE))
         {
+            // PageNum: index of 2 MB page
             // modify table directory entry
-            PageTablePtr[TableNum] =
-                (PageTablePtr[TableNum] & ~ResetFlags) | SetFlags;
+            *PageDirectoryElement |= SetFlags;
+            *PageDirectoryElement &= ~(ULONGLONG)ResetFlags;
+
             // modify also page directory, just for case if page
             // size will change afterwards
+            // pPageDir: virtual address of page directory
             // Page directories are placed just after table directory
-            for (int i = 0; i < 0x400; i++, pPageDir++) // 1024 pages
+
+            for (int i = 0; i < 512; i++, PageTableElement++) // 512 pages
             {
-                pPageDir[i] =
-                    (pPageDir[i] & ~ResetFlags) | SetFlags;
+                PageTableElement[i] |= SetFlags;
+                PageTableElement[i] &= ~(ULONGLONG)ResetFlags;
+
                 __invlpg(VirtAddr);
+
                 VirtAddr = 0x1000 + (char*)VirtAddr;
+                size -= 0x1000;
             }
-            size -= 0x400000;
         }
         else
         {
+            // TableNum: index of page directory
             // restore table directory entry to make it pointing
             // to the page directory
-            PageTablePtr[TableNum] = (PageTablePtr[TableNum]
-                                         & (0xFFF & ~PAGE_4M)) | DWORD(pPageDir - PageTableOffset);
-            pPageDir += (DWORD(VirtAddr) & 0x003FF000) >> 12;
-            *pPageDir = (*pPageDir & ~ResetFlags) | SetFlags;
+            if (*PageDirectoryElement & PAGE_DIR_FLAG_LARGE_PAGE)
+            {
+                *PageDirectoryElement =
+                    (ULONGLONG(GetPhysAddr(PageTableElement)) & ~0xFFFULL)
+                    | PAGE_DIR_FLAG_PRESENT
+                    | PAGE_DIR_FLAG_WRITABLE;
+            }
+
+            *PageTableElement |= SetFlags;
+            *PageTableElement &= ~(ULONGLONG)ResetFlags;
+
             __invlpg(VirtAddr);
+
             VirtAddr = 0x1000 + (char*)VirtAddr;
             size -= 0x1000;
         }
@@ -2946,29 +2969,17 @@ void ModifyPageFlags(void * VirtAddr, size_t size, DWORD SetFlags,
 void RelocateProgram(void)
 {
     // map an area where to copy code and data segments
-    if (DWORD(pMemoryToTestStart) < 0x400000 || NULL == CurrentPhysProgramLocation)
+    if (DWORD(pMemoryToTestStart) < 0x1000000 || NULL == CurrentPhysProgramLocation)
     {
-        if (MemoryInUseByProgram < 0x100000)    // 1MB
+        if (NULL == CurrentPhysProgramLocation)
         {
-            CurrentPhysProgramLocation = 0x100000 + (char*)CurrentPhysProgramLocation;
-            if (DWORD(CurrentPhysProgramLocation) >
-                DWORD(pMemoryToTestEnd) - 0x100000)
-            {
-                CurrentPhysProgramLocation = (void*)0x100000;
-            }
+            CurrentPhysProgramLocation = (PHYSICAL_ADDR)0x00800000;
         }
-        else
+        CurrentPhysProgramLocation = 0x1000000 + CurrentPhysProgramLocation;
+        if (CurrentPhysProgramLocation > pMemoryToTestEnd - 0x400000
+            || CurrentPhysProgramLocation >= (PHYSICAL_ADDR)0x20000000)
         {
-            if (NULL == CurrentPhysProgramLocation)
-            {
-                CurrentPhysProgramLocation = (void*)0x00800000;
-            }
-            CurrentPhysProgramLocation = 0x400000 + (char*)CurrentPhysProgramLocation;
-            if (DWORD(CurrentPhysProgramLocation) >
-                DWORD(pMemoryToTestEnd) - 0x400000)
-            {
-                CurrentPhysProgramLocation = (void*)0x00800000;
-            }
+            CurrentPhysProgramLocation = (PHYSICAL_ADDR)0x00800000;
         }
 
 #ifdef _DEBUG
@@ -2976,19 +2987,19 @@ void RelocateProgram(void)
 #endif
         MapVirtualToPhysical((void*)0x800000, CurrentPhysProgramLocation,
                              MemoryInUseByProgram);
-        DWORD * pNewPageDirectory = PageTablePtr + 0x100000; // 1M DWORDS=4 MB up
+        ULONGLONG * pNewPageDirectory = PageTablePtr + 0x100000; // 1M QWORDS=8 MB up
 
         // Init and copy page directory
         InitPageTable(pNewPageDirectory, PageTableSize);
-        InitVirtualToPhysical((void*)0x400000, CurrentPhysProgramLocation,
-                              MemoryInUseByProgram, pNewPageDirectory);
+        MapVirtualToPhysical((void*)0x400000, CurrentPhysProgramLocation,
+                             MemoryInUseByProgram, pNewPageDirectory);
 
         // switch to new page directory
-        DWORD * pNewPhysTablePtr = (DWORD*)GetPhysAddr(pNewPageDirectory);
-        PageTableOffset = PageTablePtr - pNewPhysTablePtr;
+        PHYSICAL_ADDR pNewPhysTablePtr = GetPhysAddr(pNewPageDirectory);
+        PageTablePtr = (ULONGLONG*)(ULONG_PTR)(ULONGLONG)pNewPhysTablePtr;
 
         // copy program code and data segment
-        memcpy((void *) 0x800000, (void *) 0x400000,
+        memcpy((void *) 0x1000000, (void *) 0x400000,
                DWORD(TopProgramAddress) - 0x400000);
 
         SwitchPageTable(pNewPhysTablePtr);
@@ -2996,8 +3007,8 @@ void RelocateProgram(void)
 }
 
 // function does not change program area mapping
-size_t MapMemoryToTest(void * ProgramRegion, size_t ProgramRegionSize,
-                       void * PhysMemoryBottom, void * PhysMemoryTop)
+size_t MapMemoryToTest(PHYSICAL_ADDR ProgramRegion, size_t ProgramRegionSize,
+                       PHYSICAL_ADDR PhysMemoryBottom, PHYSICAL_ADDR PhysMemoryTop)
 {
 #ifdef _DEBUG
     if (ProgramRegionSize > 0x400000
@@ -3009,20 +3020,20 @@ size_t MapMemoryToTest(void * ProgramRegion, size_t ProgramRegionSize,
         while(1);
     }
 #endif
-    DWORD CurrVirtAddr = DWORD(TestStartVirtAddr);
-    DWORD CurrPhysAddr = 0x400000;  // 4 MB
+    PUCHAR CurrVirtAddr = PUCHAR(TestStartVirtAddr);
+    PHYSICAL_ADDR CurrPhysAddr = (PHYSICAL_ADDR)0x400000;  // 4 MB
 
-    if (CurrPhysAddr < DWORD(PhysMemoryBottom))
+    if (CurrPhysAddr < PhysMemoryBottom)
     {
-        CurrPhysAddr = DWORD(PhysMemoryBottom);
+        CurrPhysAddr = PhysMemoryBottom;
     }
 
-    while(CurrPhysAddr + 0x400000 <= DWORD(PhysMemoryTop))
+    while(CurrPhysAddr + 0x400000 <= PhysMemoryTop)
     {
-        if (CurrPhysAddr >= DWORD(ProgramRegion) + ProgramRegionSize
-            || CurrPhysAddr + 0x400000 <= DWORD(ProgramRegion))
+        if (CurrPhysAddr >= ProgramRegion + ProgramRegionSize
+            || CurrPhysAddr + 0x400000 <= ProgramRegion)
         {
-            MapVirtualToPhysical(PVOID(CurrVirtAddr), PVOID(CurrPhysAddr),
+            MapVirtualToPhysical(CurrVirtAddr, CurrPhysAddr,
                                  0x400000);
             CurrVirtAddr += 0x400000;   // 4MB
         }
@@ -3031,47 +3042,51 @@ size_t MapMemoryToTest(void * ProgramRegion, size_t ProgramRegionSize,
 
     // map incomplete top megabytes (if any)
     // don't map if the program is above this address
-    if(CurrPhysAddr < DWORD(PhysMemoryTop)
-        && CurrPhysAddr >= DWORD(ProgramRegion) + ProgramRegionSize)
+    if(CurrPhysAddr < PhysMemoryTop
+        && CurrPhysAddr >= ProgramRegion + ProgramRegionSize)
     {
-        size_t ToMap = DWORD(PhysMemoryTop) - CurrPhysAddr;
-        MapVirtualToPhysical(PVOID(CurrVirtAddr), PVOID(CurrPhysAddr),
+        ULONGLONG ToMap = PhysMemoryTop - CurrPhysAddr;
+        MapVirtualToPhysical(CurrVirtAddr, CurrPhysAddr,
                              ToMap);
         CurrVirtAddr += ToMap;
     }
     // map 0x100000-0x400000
-    if (DWORD(PhysMemoryBottom) < 0x400000
-        && DWORD(ProgramRegion) >= 0x400000)
+    if (PhysMemoryBottom < (PHYSICAL_ADDR)0x400000
+        && ProgramRegion >= (PHYSICAL_ADDR)0x400000)
     {
-        CurrPhysAddr = 0x100000;    // 1MB
-        if (CurrPhysAddr < DWORD(PhysMemoryBottom))
-            CurrPhysAddr = DWORD(PhysMemoryBottom);
-        size_t ToMap = 0x400000 - CurrPhysAddr;
-        MapVirtualToPhysical(PVOID(CurrVirtAddr), PVOID(CurrPhysAddr),
-                             ToMap);
+        CurrPhysAddr = (PHYSICAL_ADDR)0x100000;    // 1MB
+        if (CurrPhysAddr < PhysMemoryBottom)
+        {
+            CurrPhysAddr = PhysMemoryBottom;
+        }
+
+        size_t ToMap = size_t(0x400000 - (ULONGLONG)CurrPhysAddr);
+
+        MapVirtualToPhysical(CurrVirtAddr, CurrPhysAddr, ToMap);
+
         CurrVirtAddr += ToMap;
     }
     // map spare MBs from program 4MB page
     if (ProgramRegionSize < 0x400000)
     {
         // round the address to 4 MB boundary
-        DWORD ProgramPage = DWORD(ProgramRegion) & ~0x3FFFFF;
+        PHYSICAL_ADDR ProgramPage = (PHYSICAL_ADDR)(ULONGLONG(ProgramRegion) & ~0x3FFFFF);
         CurrPhysAddr = ProgramPage;
-        if (DWORD(PhysMemoryBottom) <= ProgramPage)
+        if (PhysMemoryBottom <= ProgramPage)
         {
             // don't map lowest memory here
             if (00000 == CurrPhysAddr)
             {
-                CurrPhysAddr = 0x100000;
+                CurrPhysAddr = (PHYSICAL_ADDR)0x100000;
             }
+
             for (; CurrPhysAddr < ProgramPage + 0x400000; CurrPhysAddr += 0x100000)
             {
-                if ((CurrPhysAddr >= DWORD(ProgramRegion) + ProgramRegionSize
-                        || CurrPhysAddr + 0x100000 <= DWORD(ProgramRegion))
-                    && CurrPhysAddr+0x100000 <= DWORD(PhysMemoryTop))
+                if ((CurrPhysAddr >= ProgramRegion + ProgramRegionSize
+                        || CurrPhysAddr + 0x100000 <= ProgramRegion)
+                    && CurrPhysAddr+0x100000 <= PhysMemoryTop)
                 {
-                    MapVirtualToPhysical(PVOID(CurrVirtAddr),
-                                         PVOID(CurrPhysAddr), 0x100000);
+                    MapVirtualToPhysical(CurrVirtAddr, CurrPhysAddr, 0x100000);
                     CurrVirtAddr += 0x100000;
                 }
             }
@@ -3080,12 +3095,11 @@ size_t MapMemoryToTest(void * ProgramRegion, size_t ProgramRegionSize,
     // map 0x00000-0xA0000
     if (PhysMemoryBottom == 0x00000)
     {
-        MapVirtualToPhysical(PVOID(CurrVirtAddr), 0x000000,
-                             0xA0000);
+        MapVirtualToPhysical(CurrVirtAddr, 0x000000, 0xA0000);
         CurrVirtAddr += 0xA0000;
     }
 
-    return CurrVirtAddr - DWORD(TestStartVirtAddr);
+    return CurrVirtAddr - (PUCHAR)TestStartVirtAddr;
 }
 
 // test if 4 KB page physically present.
@@ -3155,15 +3169,23 @@ BOOL TestPageForPresence(void * VirtAddr, BOOL FastDetect)
 void DetectInstalledMemory(MEMTEST_STARTUP_PARAMS * pTestParams)
 {
     // get zero and target page flags
-    void * const check_addr = (void *) 0x7FF000;  // 7MB-4K
+    void * const check_addr = (void *) 0xFFF000;  // 16MB-4K
     DWORD ZeroPageFlags = GetPageFlags(NULL);
     DWORD TargetPageFlags = GetPageFlags(check_addr);
 
-    // set zero and target page attributes to non-cacheable
-    if (TestParams.CpuType >= 486)
+    if (0 == pTestParams->MemoryTop)
     {
-        ModifyPageFlags(0, 0x1000, PAGE_CACHE_DISABLE, 0);
-        ModifyPageFlags(check_addr, 0x1000, PAGE_CACHE_DISABLE, 0);
+        pTestParams->MemoryTop = 0x200000000LL >> 20;    // 8GB in MB
+    }
+
+    PHYSICAL_ADDR MemoryTop = PHYSICAL_ADDR(pTestParams->MemoryTop * 0x100000ULL);
+    PHYSICAL_ADDR MemoryStart = PHYSICAL_ADDR(pTestParams->MemoryStart * 0x100000ULL);
+
+    // set zero and target page attributes to non-cacheable
+//    if (TestParams.CpuType >= 486)    // assumed
+    {
+        ModifyPageFlags(0, 0x1000, PAGE_DIR_FLAG_NOCACHE, 0);
+        ModifyPageFlags(check_addr, 0x1000, PAGE_DIR_FLAG_NOCACHE, 0);
     }
 
     ModifyPageFlags(check_addr, 0x1000,
@@ -3172,20 +3194,20 @@ void DetectInstalledMemory(MEMTEST_STARTUP_PARAMS * pTestParams)
 
     __wbinvd();
 
-    if (NULL == pTestParams->MemoryTop)
+    PHYSICAL_ADDR pStart = (PHYSICAL_ADDR)0x1000000;   // 16MB
+    if (pStart  < MemoryStart)
     {
-        pTestParams->MemoryTop = 0xC0000000;    // 3GB
+        pStart = MemoryStart;
     }
-    char * pStart = (char *)0x100000;   // 1MB
-    if (DWORD(pStart) < pTestParams->MemoryStart)
+    for(; pStart < MemoryTop; pStart += 0x1000)
     {
-        pStart = (char*)(pTestParams->MemoryStart);
-    }
-    for(; DWORD(pStart) < pTestParams->MemoryTop; pStart += 0x1000)
-    {
-        if ((DWORD(pStart) & 0xFFFFF) == 0)
+        if ( ! IsPageInTheSystemMap(pStart, pTestParams))
         {
-            my_printf(FALSE, "Detecting physical memory, %dM\r", DWORD(pStart) >> 20);
+            continue;
+        }
+        if ((ULONGLONG(pStart) & 0xFFFFFF) == 0)
+        {
+            my_printf(FALSE, "Detecting physical memory, %dM\r", DWORD(ULONGLONG(pStart) >> 20));
         }
         MapVirtualToPhysical(check_addr, pStart, 0x1000);
 
@@ -3193,22 +3215,24 @@ void DetectInstalledMemory(MEMTEST_STARTUP_PARAMS * pTestParams)
             break;
     }
 
-    pTestParams->MemoryTop = DWORD(pStart);
-    if (TestParams.CpuType >= 486)
+    pTestParams->MemoryTop = DWORD(ULONGLONG(pStart) >> 20);
+
+    if (0 == (ZeroPageFlags & PAGE_DIR_FLAG_NOCACHE))
     {
-        if (0 == (ZeroPageFlags & PAGE_CACHE_DISABLE))
-        {
-            ModifyPageFlags(0, 0x1000, 0, PAGE_CACHE_DISABLE);
-        }
-        if (0 == (TargetPageFlags & PAGE_CACHE_DISABLE))
-        {
-            ModifyPageFlags(check_addr, 0x1000, 0, PAGE_CACHE_DISABLE);
-        }
+        ModifyPageFlags(0, 0x1000, 0, PAGE_DIR_FLAG_NOCACHE);
+    }
+    if (0 == (TargetPageFlags & PAGE_DIR_FLAG_NOCACHE))
+    {
+        ModifyPageFlags(check_addr, 0x1000, 0, PAGE_DIR_FLAG_NOCACHE);
     }
 }
 
-void InitPageTable(void * VirtPageDirAddress, size_t BufSize)
+void InitPageTable(ULONGLONG * VirtPageDirAddress, size_t BufSize)
 {
+    // assuming 8byte PTEs,
+    // we need 4KB/2MB of first level PTE = 8MB for 4GB,
+    // 16 KB of second level, 32B third level
+    // for simplicity, we'll use 16 MB of virt space for the program and its tables
 #ifdef _DEBUG
     if (DWORD(VirtPageDirAddress) & 0xFFF
         || BufSize & 0xFFF
@@ -3220,29 +3244,26 @@ void InitPageTable(void * VirtPageDirAddress, size_t BufSize)
     }
 #endif
 
-    DWORD * TableDir = (DWORD*) VirtPageDirAddress;
-    memset(TableDir, 0, 0x1000);
+    memset(VirtPageDirAddress, 0, BufSize);
+
+    ULONGLONG * DirectoryPointerTable = (ULONGLONG*) VirtPageDirAddress;
     BufSize -= 0x1000;
-    DWORD * PageDir = TableDir + 0x400;
 
-    for (; BufSize != 0; BufSize -= 0x1000, PageDir += 0x400, TableDir++)
+    for (unsigned i = 0; i < 4; i++)
     {
-        * TableDir = DWORD(GetPhysAddr(PageDir)) |
-                     (PAGE_DIR_FLAG_PRESENT | PAGE_DIR_FLAG_WRITABLE
-                         | PAGE_DIR_FLAG_ACCESSED | PAGE_DIR_FLAG_DIRTY);
-
-        for (int i = 0; i < 0x400; i++)
-        {
-            PageDir[i] = PAGE_DIR_FLAG_PRESENT | PAGE_DIR_FLAG_WRITABLE
-                         | PAGE_DIR_FLAG_ACCESSED | PAGE_DIR_FLAG_DIRTY;
-        }
+        DirectoryPointerTable[i] = ULONGLONG(GetPhysAddr(
+                                                         GetPageDirectoryElement((void*)(i << 30), VirtPageDirAddress)))
+                                   | PAGE_DIR_FLAG_PRESENT | PAGE_DIR_FLAG_ACCESSED;
     }
 
-    // map lower 8 MB as currently is
-    for (char * addr = 0;DWORD(addr) < 0x800000; addr += 0x1000)
+    // map lower 16 MB as currently is, to allow for page table switch
+    for (char * addr = 0;DWORD(addr) < 0x1000000; addr += 0x1000)
     {
-        InitVirtualToPhysical(addr, GetPhysAddr(addr), 0x1000,
-                              (DWORD*)VirtPageDirAddress);
+        MapVirtualToPhysical(addr, GetPhysAddr(addr), 0x1000,
+                             VirtPageDirAddress,
+                             PAGE_DIR_FLAG_PRESENT
+                             | PAGE_DIR_FLAG_WRITABLE
+                             | MAP_VIRTUAL_TO_PHYS_NO_INVTLB);
     }
 }
 

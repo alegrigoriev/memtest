@@ -57,6 +57,7 @@
 #define PAGE_DIR_FLAG_NOCACHE       0x10
 #define PAGE_DIR_FLAG_ACCESSED      0x20
 #define PAGE_DIR_FLAG_DIRTY         0x40
+#define PAGE_DIR_FLAG_LARGE_PAGE    0x80
 
 #define SEG_DESC_4K_GRANULARITY     0x00800000UL
 #define SEG_DESC_32BIT              0x00400000UL
@@ -167,28 +168,51 @@ struct GATE
     WORD offset_16_31;
 };
 
+struct PageTable
+{
+    DWORD PageDirPointerTable[1024];
+    DWORD PageDirectory[1024];
+    DWORD PageTableArray[1024];    // to address 32 MB, add 15 more pages
+};
+
 struct PROTECTED_MODE_STARTUP_MEMORY
 {
-    DWORD TableDir[1024];
-    DWORD PageDir0[1024];
-    DWORD PageDir1[1024];
     GATE IDT[256];
     _TSS TSS;
     DESCRIPTOR GDT[12];
     char stack[0x2000];
     DWORD StackTop; // dummy return address
     DWORD StartupArgument;
+    DWORD PageTableAddress;
 };
 
 #define MEGABYTE 0x100000LU
 #define GIGABYTE 0x40000000LU
+struct MemoryMap
+{
+    DWORD   BaseAddressLow;
+    DWORD   BaseAddressHigh;
+    DWORD   RangeSizeLow;
+    DWORD   RangeSizeHigh;
+};
+
+struct SystemMemoryMapElement
+{
+    DWORD   BaseAddressLow;
+    DWORD   BaseAddressHigh;
+    DWORD   RangeSizeLow;
+    DWORD   RangeSizeHigh;
+    DWORD   RangeType;  // 01 - available
+};
+
+#define MAX_NUMBER_OF_MEMORY_RANGES 64
 
 struct MEMTEST_STARTUP_PARAMS
 {
     WORD CpuType;       // 386, 486, 586, 686
     WORD CpuFeatures;   // CPUID info
-    DWORD MemoryStart;  // begin of memory to test
-    DWORD MemoryTop;    // end of memory to test
+    DWORD MemoryStart;  // begin of memory to test, in megabytes
+    DWORD MemoryTop;    // end of memory to test, in megabytes
     DWORD ProgramTop;   // top virtual address of memory used by program code
     DWORD ShortDelay;
     DWORD LongDelay;
@@ -201,12 +225,14 @@ struct MEMTEST_STARTUP_PARAMS
     WORD SMIEAddr;     // address of SMI Global Enable register in I/O space
     BYTE CursorRow;
     BYTE CursorColumn;
+    WORD    MemoryMapUsed;
+    MemoryMap Map[MAX_NUMBER_OF_MEMORY_RANGES];
     MEMTEST_STARTUP_PARAMS()
     {
         CpuType = 686;
         CpuFeatures = 0;
         MemoryStart = 0;
-        MemoryTop = 3 * GIGABYTE;
+        MemoryTop = (3 * GIGABYTE) >> 20;
         ProgramTop = 4 * MEGABYTE;
         ShortDelay = 1000;
         LongDelay = 60000;
@@ -223,6 +249,8 @@ struct MEMTEST_STARTUP_PARAMS
         SMIEAddr = 0;
         CursorRow = 0;
         CursorColumn = 0;
+
+        memset (& Map, 0, sizeof Map);
     }
 };
 

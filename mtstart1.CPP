@@ -127,6 +127,63 @@ inline BOOL IsBareDOS(BOOL IgnoreXmm)
         return TRUE;
 }
 
+DWORD GetSystemMemoryMap(SystemMemoryMapElement far * pMap, DWORD Offset_)
+{
+
+    __asm {
+        push    di
+        push    bx
+        push    bp
+        push    si
+        //mov  eax,0x0000E820
+        _emit 0x66 _asm _emit 0B8h _asm _emit 20h _asm _emit 0xE8 _asm _emit 0 _asm _emit 0
+        //mov edx, 0x534D4150
+        _emit 0x66 _asm mov dx,0x4150 _asm _emit 0x4D _asm _emit 0x53
+        les di, pMap
+        _emit 0x66 _asm mov bx, word ptr Offset_
+        int     15h
+        pop     si
+        pop     bp
+        jnc     good
+        _emit 0x66 _asm xor     bx, bx
+good:
+        _emit 0x66 _asm mov word ptr Offset_, bx
+        pop     bx
+        pop     di
+    }
+    return Offset_;
+}
+
+void FillMemoryMap(PROTECTED_MODE_STARTUP_DATA * pStartup)
+{
+    unsigned i;
+    DWORD Offset;
+    SystemMemoryMapElement map;
+    for (i = 0, Offset = 0; i < MAX_NUMBER_OF_MEMORY_RANGES; )
+    {
+        Offset = GetSystemMemoryMap(&map, Offset);
+        TRACE("GetSystemMemoryMap returned base=%lX%08lX, length: %lX%08lX, type=%ld\n",
+              map.BaseAddressHigh, map.BaseAddressLow,
+              map.RangeSizeHigh, map.RangeSizeLow,
+              map.RangeType);
+
+        if (Offset == 0)
+        {
+            break;
+        }
+        if (map.RangeType != 1)
+        {
+            continue;
+        }
+        pStartup->msp.Map[i].BaseAddressHigh = map.BaseAddressHigh;
+        pStartup->msp.Map[i].BaseAddressLow = map.BaseAddressLow;
+        pStartup->msp.Map[i].RangeSizeHigh = map.RangeSizeHigh;
+        pStartup->msp.Map[i].RangeSizeLow = map.RangeSizeLow;
+        i++;
+    }
+    pStartup->msp.MemoryMapUsed = i;
+}
+
 void ResetFloppies()
 {
     __asm   {
@@ -336,8 +393,8 @@ int ProcessCommandLine(int argc, char * * argv, MEMTEST_STARTUP_PARAMS * pParams
 
         if (start + size > 3072)
             return ArgIdx - 1;
-        pParams->MemoryStart = start * 0x100000;
-        pParams->MemoryTop = (start + size) * 0x100000;
+        pParams->MemoryStart = start;
+        pParams->MemoryTop = (start + size);
     }
     // process other options
     while(argc > 0)
@@ -555,6 +612,8 @@ int _cdecl main(int argc, char *argv[])
         // set RTC values to detect crash
         SetRTCDefaults();
     }
+
+    FillMemoryMap(&Startup);
 
     PAUSE("Going to load PE module...(press Enter)");
 
