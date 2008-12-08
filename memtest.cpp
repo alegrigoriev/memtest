@@ -245,7 +245,7 @@ const int screen_height = 25;
 unsigned __int16 (*const screenbase)[screen_width]
 = (unsigned __int16 (*)[screen_width]) 0xb8000;
 
-int curr_row=24, curr_col=0; // current row and column on text mode display
+int CurrentCursorRow=24, CurrentCursorColumn=0; // current row and column on text mode display
 
 char const title[] = MEMTEST_TITLE;
 
@@ -412,7 +412,7 @@ void my_putsStandalone(const char * str, BOOL IsErrMsg,
                        unsigned __int16 color_mask)
 {
     static int error_row = 0;
-    unsigned __int16 * position = &screenbase[curr_row][curr_col];
+    unsigned __int16 * position = &screenbase[CurrentCursorRow][CurrentCursorColumn];
     unsigned char c;
     if (IsErrMsg && 0 == error_row)
     {
@@ -423,25 +423,25 @@ void my_putsStandalone(const char * str, BOOL IsErrMsg,
     {
         if ('\r' == c)
         {
-            curr_col = 0;
-            position = &screenbase[curr_row][0];
+            CurrentCursorColumn = 0;
+            position = &screenbase[CurrentCursorRow][0];
             continue;
         }
 
-        if ('\n' == c || curr_col >= screen_width)
+        if ('\n' == c || CurrentCursorColumn >= screen_width)
         {
             // do scrolling or move cursor to the next line
-            curr_col = 0;
-            if (curr_row < screen_height - 1)
+            CurrentCursorColumn = 0;
+            if (CurrentCursorRow < screen_height - 1)
             {
-                curr_row++;
+                CurrentCursorRow++;
             }
             else
             {
                 memcpy(screenbase, &screenbase[1][0], (screen_height - 1) * sizeof screenbase[0]);
-                curr_row = screen_height - 1;
+                CurrentCursorRow = screen_height - 1;
             }
-            position = &screenbase[curr_row][0];
+            position = &screenbase[CurrentCursorRow][0];
             // clear the row
             for (int i = 0; i < screen_width; i++)
             {
@@ -474,7 +474,7 @@ void my_putsStandalone(const char * str, BOOL IsErrMsg,
         }
         *position = c | color_mask;
         position++;
-        curr_col++;
+        CurrentCursorColumn++;
     }
 }
 
@@ -2456,7 +2456,7 @@ char * InitMemtest(MEMTEST_STARTUP_PARAMS * pTestParams)
     // and command line options.
 
     // get current cursor position
-    curr_row = pTestParams->CursorRow;
+    CurrentCursorRow = pTestParams->CursorRow;
 
 
     if (TestParams.m_PassCount != 0)
