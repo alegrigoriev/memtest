@@ -3,6 +3,7 @@
 #include <windows.h>
 #include <process.h>
 #include <signal.h>
+#include <intrin.h>
 
 #include <stdio.h>
 #ifndef countof
@@ -221,14 +222,13 @@ char * TopProgramAddress;
 #define CPUID_MACHINE_CHECK_EXCEPTION 0x80    // bit 7
 #define CPUID_TIME_STAMP_COUNTER 0x10
 
-#define RDMSR __emit 0x0F   __asm __emit 0x32
-#define WRMSR __emit 0x0F   __asm __emit 0x30
-
 // machine check MSRs
-#define MCG_CAP 0x179
-#define MCG_STATUS 0x17A
-#define MCG_CTL 0x17B
-#define MCG_CTL_PRESENT 0x100
+#define MCG_CAP                     0x179
+#define MCG_CTL_PRESENT             0x100
+#define MCG_STATUS                  0x17A
+#define MCG_CTL                     0x17B
+#define MC0_STATUS                  0x401
+#define MC0_CTL                     0x400
 
 #define CR4_4MB_PAGES_ENABLED 0x10
 #define CR4_MACHINE_CHECK_ENABLED 0x40    // bit 6
@@ -251,9 +251,6 @@ char const title[] = MEMTEST_TITLE;
 
 /////////////////////////////////////////////////////////////
 // Function declarations
-
-void WriteBackAndInvalidateStandalone();
-void (*WriteBackAndInvalidate)() = WriteBackAndInvalidateStandalone;
 
 void DetectInstalledMemory(MEMTEST_STARTUP_PARAMS * pTestParams);
 BOOL TestPageForPresence(void * VirtAddr, BOOL FastDetect);
@@ -357,24 +354,10 @@ inline void InitDescriptor(DESCRIPTOR & d, void * base, DWORD limit,
 // page table switch should be implemented as an inline #define
 // because stack contents should not change between stack copy and
 // CR3 reload. This means that a call/ret pair can't be used
-#ifdef _DEBUG
 #define SwitchPageTable(PhysPageDirAddress)         \
-    if (DWORD(PhysPageDirAddress) & 0xFFF)          \
-        {                                           \
-        my_puts("Error In SwitchPageTable", FALSE); \
-        while(1);                                   \
-        }                                           \
-        __asm {mov     eax, PhysPageDirAddress}      \
-        __asm {mov     cr3, eax}                     \
-        __asm {jmp     label1}                     \
-label1:;
-#else
-#define SwitchPageTable(PhysPageDirAddress)         \
-        __asm {mov     eax, PhysPageDirAddress}      \
-        __asm {mov     cr3, eax}                     \
+    __writecr3((unsigned)ULONGLONG(PhysPageDirAddress));       \
         __asm {jmp     label1}                       \
 label1:;
-#endif
 
 
 #define TRUE 1
@@ -713,7 +696,7 @@ void DoPreheatMemory(void * addr, size_t _size, size_t step,
         ModifyPageFlags(addr, _size,
                         PAGE_DIR_FLAG_NOCACHE, 0);
 
-        WriteBackAndInvalidate();
+        __wbinvd();
 
         PreheatMemory(addr, _size, step);
 
@@ -1717,7 +1700,7 @@ void TestThread::CompareTestDataBackward(char * addr, size_t size,
     if(flags & TEST_SEESAW)
     {
         ReadMemorySeeSaw(addr, size, MemoryRowSize);
-        WriteBackAndInvalidate();
+        __wbinvd();
     }
 
 #ifdef _DEBUG
@@ -1994,7 +1977,7 @@ void TestThread::DoMemoryTestPattern(char * addr, size_t _size,
 
         if(flags & TEST_EMPTY_CACHE)
         {
-            WriteBackAndInvalidate();
+            __wbinvd();
         }
 
         // write test data to memory area
@@ -2051,7 +2034,7 @@ void TestThread::DoMemoryTestPattern(char * addr, size_t _size,
 
         if(flags & TEST_EMPTY_CACHE)
         {
-            WriteBackAndInvalidate();
+            __wbinvd();
         }
 
         // check test data
@@ -2073,7 +2056,7 @@ void TestThread::DoMemoryTestPattern(char * addr, size_t _size,
 
         if(flags & TEST_EMPTY_CACHE)
         {
-            WriteBackAndInvalidate();
+            __wbinvd();
         }
 
 #if defined(MAKEERROR) && defined (_DEBUG)
@@ -2134,7 +2117,7 @@ DWORD TestThread::DoRandomMemoryTest(char * addr, size_t _size, DWORD seed,
     CheckForKey();
     if(flags & TEST_EMPTY_CACHE)
     {
-        WriteBackAndInvalidate();
+        __wbinvd();
     }
     // write test data to memory area
     // print current test
@@ -2191,7 +2174,7 @@ DWORD TestThread::DoRandomMemoryTest(char * addr, size_t _size, DWORD seed,
 
     if(flags & TEST_EMPTY_CACHE)
     {
-        WriteBackAndInvalidate();
+        __wbinvd();
     }
 
     CompareRandomTestData(addr, _size, seed, polynom, flags);
@@ -2385,24 +2368,16 @@ unsigned DOSTestThread::TestFunction()
     return 0;
 }
 
-#pragma warning(disable: 4035)
-inline __int64 ReadTSC()
-{
-    __asm {
-        RDTSC
-    }
-}
-#pragma warning(default: 4035)
-
 void PrintMachinePerformance(MEMTEST_STARTUP_PARAMS * pTestParams)
 {
     if ((pTestParams->CpuFeatures & CPUID_TIME_STAMP_COUNTER) == 0)
         return;
     // measure CPU clock rate
     Delay(10);
-    DWORD cpu_clock = DWORD(ReadTSC());
+    DWORD cpu_clock = DWORD(__rdtsc());
     Delay(100);
-    cpu_clock = DWORD(ReadTSC()) - cpu_clock;
+    cpu_clock = DWORD(__rdtsc()) - cpu_clock;
+
     my_printf(TRUE, "CPU clock rate: %d MHz\n", (cpu_clock + 50000) / 100000);
 
     // measure L2 cache read/write speed
@@ -2414,27 +2389,27 @@ void PrintMachinePerformance(MEMTEST_STARTUP_PARAMS * pTestParams)
 
     // preload L2 cache
     PreloadCache((void*)0x800000, 0x20000);
-    DWORD rclock = DWORD(ReadTSC());
+    DWORD rclock = DWORD(__rdtsc());
     int i;
     for (i = 0; i < 10; i++)
     {
         PreloadCache((void*)0x800000, 0x20000);
     }
-    rclock = DWORD(ReadTSC()) - rclock;
+    rclock = DWORD(__rdtsc()) - rclock;
 
-    DWORD wclock = DWORD(ReadTSC());
+    DWORD wclock = DWORD(__rdtsc());
     for (i = 0; i < 10; i++)
     {
         FillMemoryPattern((void*)0x800000, 0x20000, 0, 0);
     }
-    wclock = DWORD(ReadTSC()) - wclock;
+    wclock = DWORD(__rdtsc()) - wclock;
 
-    DWORD wpclock = DWORD(ReadTSC());
+    DWORD wpclock = DWORD(__rdtsc());
     for (i = 0; i < 10; i++)
     {
         FillMemoryPatternWriteAlloc((void*)0x800000, 0x20000, 0);
     }
-    wpclock = DWORD(ReadTSC()) - wpclock;
+    wpclock = DWORD(__rdtsc()) - wpclock;
 
     my_printf(TRUE, "L2 Cache speed: read=%d MB/s, write=%d MB/s, "
               "write/allocate=%d MB/s\n",
@@ -2443,26 +2418,26 @@ void PrintMachinePerformance(MEMTEST_STARTUP_PARAMS * pTestParams)
               (25 * (cpu_clock / 2)) / wpclock);
 
     // measure memory read/write speed
-    rclock = DWORD(ReadTSC());
+    rclock = DWORD(__rdtsc());
     for (i = 0; i < 10; i++)
     {
         PreloadCache((void*)0x800000, 0x400000);
     }
-    rclock = DWORD(ReadTSC()) - rclock;
+    rclock = DWORD(__rdtsc()) - rclock;
 
-    wclock = DWORD(ReadTSC());
+    wclock = DWORD(__rdtsc());
     for (i = 0; i < 10; i++)
     {
         FillMemoryPattern((void*)0x800000, 0x400000, 0, 0);
     }
-    wclock = DWORD(ReadTSC()) - wclock;
+    wclock = DWORD(__rdtsc()) - wclock;
 
-    wpclock = DWORD(ReadTSC());
+    wpclock = DWORD(__rdtsc());
     for (i = 0; i < 10; i++)
     {
         FillMemoryPatternWriteAlloc((void*)0x800000, 0x400000, 0);
     }
-    wpclock = DWORD(ReadTSC()) - wpclock;
+    wpclock = DWORD(__rdtsc()) - wpclock;
 
     my_printf(TRUE, "Main memory speed: read=%d MB/s, write=%d MB/s, "
               "write/allocate=%d MB/s\n",
@@ -2503,13 +2478,7 @@ char * InitMemtest(MEMTEST_STARTUP_PARAMS * pTestParams)
     {
         f4MBPagesSupported = TRUE;
         // enable 4MB page size extension in CR4
-        __asm {
-            //mov     eax,cr4
-            __emit 0x0F __asm __emit 0x20 __asm __emit 0xE0
-            or      eax,CR4_4MB_PAGES_ENABLED
-            //mov     cr4,eax
-            __emit 0x0F __asm __emit 0x22 __asm __emit 0xE0
-        }
+        __writecr4(__readcr4() | CR4_4MB_PAGES_ENABLED);
     }
 
     // Detect installed memory size
@@ -2593,7 +2562,7 @@ char * InitMemtest(MEMTEST_STARTUP_PARAMS * pTestParams)
     // switch to new IDT
     fptr.len = 256 * sizeof (GATE);
     fptr.ptr = pIDT;
-    __asm lidt fptr.len;
+    __lidt((void*)&fptr);
 
     // switch to new TSS (no values is loaded yet from it)
     __asm mov eax, 10 * 8
@@ -2625,46 +2594,18 @@ char * InitMemtest(MEMTEST_STARTUP_PARAMS * pTestParams)
         if (TestParams.CpuFeatures & CPUID_MACHINE_CHECK_ARCHITECTURE)
         {
             // initialize machine check
-            __asm {
-                mov     ecx,MCG_CAP
-                RDMSR
-                test    eax,MCG_CTL_PRESENT
-                jz      no_mcg_ctl
-
-                push    eax
-                mov     ecx,MCG_CTL
-                mov     eax,-1
-                mov     edx,eax
-                WRMSR
-                pop     eax
-no_mcg_ctl:
-                push    eax
-                mov     ecx,0x401       // MC0_STATUS
-init_mci_sts:
-                sub     al,1
-                jb      no_mci_sts
-                push    eax
-                xor     eax,eax
-                xor     edx,edx
-                WRMSR
-                pop     eax
-                add     ecx,4
-                jmp     init_mci_sts
-no_mci_sts:
-                pop     eax
-
-                mov     ecx,0x404       // MC1_CTL
-init_mci_ctl:
-                sub     al,1
-                jbe      no_mci_ctl
-                push    eax
-                mov     eax,-1
-                mov     edx,eax
-                WRMSR
-                pop     eax
-                add     ecx,4
-                jmp     init_mci_ctl
-no_mci_ctl:
+            ULONGLONG msg_cap = __readmsr(MCG_CAP);
+            if (msg_cap & MCG_CTL_PRESENT)
+            {
+                __writemsr(MCG_CTL, -1LL);
+            }
+            for (unsigned i = 0; i < (msg_cap & 0xFF); i++)
+            {
+                __writemsr(MC0_STATUS+i*4, 0);
+            }
+            for (unsigned i = 1; i < (msg_cap & 0xFF); i++)
+            {
+                __writemsr(MC0_CTL+i*4, -1LL);
             }
 #ifndef _DEBUG
             if (TestParams.m_Flags & TEST_FLAGS_PERFORMANCE)
@@ -2673,13 +2614,8 @@ no_mci_ctl:
                 my_puts("Machine Check Architecture enabled\n", FALSE);
             }
         }
-        __asm {
-            //mov     eax,cr4
-            __emit 0x0F __asm __emit 0x20 __asm __emit 0xE0
-            or      eax,CR4_MACHINE_CHECK_ENABLED
-            //mov     cr4,eax
-            __emit 0x0F __asm __emit 0x22 __asm __emit 0xE0
-        }
+        __writecr4(__readcr4() | CR4_MACHINE_CHECK_ENABLED);
+
 #ifndef _DEBUG
         if (TestParams.m_Flags & TEST_FLAGS_PERFORMANCE)
 #endif
@@ -2721,19 +2657,6 @@ extern "C" void _cdecl MemtestStartup(MEMTEST_STARTUP_PARAMS * pTestParams)
     // call main memtest function
     _MemtestEntry();
     while(1);
-}
-
-void WriteBackAndInvalidateStandalone()
-{
-    if (TestParams.CpuType >= 486)
-    {
-        __asm WBINVD
-    }
-}
-
-void WriteBackAndInvalidateWin()
-{
-    // NO-OP
 }
 
     // convert physical to virtual
@@ -2805,11 +2728,7 @@ void MapVirtualToPhysical(void * VirtAddr, void * PhysAddr, size_t size)
             for (int i = 0; i < 0x400; i++, pPageDir++) // 1024 pages
             {
                 pPageDir[i] = (pPageDir[i] & 0xFFF) | DWORD(PhysAddr);
-                __asm
-                {
-                    MOV     eax,VirtAddr
-                    INVLPG  [eax]
-                }
+                __invlpg(VirtAddr);
                 VirtAddr = 0x1000 + (char*)VirtAddr;
                 PhysAddr = 0x1000 + (char*)PhysAddr;
             }
@@ -2828,11 +2747,7 @@ void MapVirtualToPhysical(void * VirtAddr, void * PhysAddr, size_t size)
                                          & (0xFFF & ~PAGE_4M)) | DWORD(pPageDir - PageTableOffset);
             pPageDir += (DWORD(VirtAddr) & 0x003FF000) >> 12;
             *pPageDir = (*pPageDir & 0x00000FFF) | DWORD(PhysAddr);
-            __asm
-            {
-                MOV     eax,VirtAddr
-                INVLPG  [eax]
-            }
+            __invlpg(VirtAddr);
             VirtAddr = 0x1000 + (char*)VirtAddr;
             PhysAddr = 0x1000 + (char*)PhysAddr;
             size -= 0x1000;
@@ -2965,13 +2880,7 @@ void ModifyPageFlags(void * VirtAddr, size_t size, DWORD SetFlags,
             {
                 pPageDir[i] =
                     (pPageDir[i] & ~ResetFlags) | SetFlags;
-                __asm
-                {
-                    MOV     eax,VirtAddr
-                    INVLPG  [eax]
-                    jmp     label1  // reset pipelines
-label1:
-                }
+                __invlpg(VirtAddr);
                 VirtAddr = 0x1000 + (char*)VirtAddr;
             }
             size -= 0x400000;
@@ -2984,13 +2893,7 @@ label1:
                                          & (0xFFF & ~PAGE_4M)) | DWORD(pPageDir - PageTableOffset);
             pPageDir += (DWORD(VirtAddr) & 0x003FF000) >> 12;
             *pPageDir = (*pPageDir & ~ResetFlags) | SetFlags;
-            __asm
-            {
-                MOV     eax,VirtAddr
-                INVLPG  [eax]
-                jmp     label2  // reset pipelines
-label2:
-            }
+            __invlpg(VirtAddr);
             VirtAddr = 0x1000 + (char*)VirtAddr;
             size -= 0x1000;
         }
@@ -3247,7 +3150,7 @@ void DetectInstalledMemory(MEMTEST_STARTUP_PARAMS * pTestParams)
                     PAGE_DIR_FLAG_PRESENT | PAGE_DIR_FLAG_WRITABLE
                     | PAGE_DIR_FLAG_ACCESSED | PAGE_DIR_FLAG_DIRTY, 0);
 
-    WriteBackAndInvalidate();
+    __wbinvd();
 
     if (NULL == pTestParams->MemoryTop)
     {
