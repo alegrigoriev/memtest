@@ -214,45 +214,44 @@ void ProtectedModeStart(PROTECTED_MODE_STARTUP_DATA * pStartup)
     // second level for 8 MB space.
     // Map low memory 1:1
 
-    pPageTableBuffer->PageDirPointerTable[0] =
+    pPageTableBuffer->PageDirPointerTable[0].low =
         GetFlatAddress(& pPageTableBuffer->PageDirectory) |
         (PAGE_DIR_FLAG_PRESENT);
-    pPageTableBuffer->PageDirPointerTable[2] = 0x1000 + pPageTableBuffer->PageDirPointerTable[0];
-    pPageTableBuffer->PageDirPointerTable[4] = 0x2000 + pPageTableBuffer->PageDirPointerTable[0];
-    pPageTableBuffer->PageDirPointerTable[6] = 0x3000 + pPageTableBuffer->PageDirPointerTable[0];
+    pPageTableBuffer->PageDirPointerTable[1].low = PAGE_SIZE + pPageTableBuffer->PageDirPointerTable[0].low;
+    pPageTableBuffer->PageDirPointerTable[2].low = PAGE_SIZE + pPageTableBuffer->PageDirPointerTable[1].low;
+    pPageTableBuffer->PageDirPointerTable[3].low = PAGE_SIZE + pPageTableBuffer->PageDirPointerTable[2].low;
 
     // initialize 16 page directory elements (each covers 2 MB of VA)
     DWORD addr = 0;
     unsigned i = 0;
-    DWORD huge * PageTable = pPageTableBuffer->PageTableArray;
-    for (i = 0; i < 32; i+=2)
+    PageTableElement huge * PageTable = pPageTableBuffer->PageTableArray;
+    for (i = 0; i < INITIAL_MAPPED_VIRTUAL_MEMORY/LARGE_PAGE_SIZE; i++)
     {
-        pPageTableBuffer->PageDirectory[i] = GetFlatAddress(PageTable) |
-                                             (PAGE_DIR_FLAG_PRESENT | PAGE_DIR_FLAG_WRITABLE
-                                                 | PAGE_DIR_FLAG_ACCESSED);
-        pPageTableBuffer->PageDirectory[i+1] = 0;
+        pPageTableBuffer->PageDirectory[i].low = GetFlatAddress(PageTable) |
+                                                 (PAGE_DIR_FLAG_PRESENT | PAGE_DIR_FLAG_WRITABLE
+                                                     | PAGE_DIR_FLAG_ACCESSED);
+        pPageTableBuffer->PageDirectory[i].high = 0;
 
-        for (unsigned j = 0; j < 1024; j+=2, addr += PAGE_SIZE)
+        for (unsigned j = 0; j < PAGE_DESCRIPTORS_PER_PAGE; j++, addr += PAGE_SIZE, PageTable ++)
         {
-            PageTable[j] = addr |
-                           (PAGE_DIR_FLAG_PRESENT | PAGE_DIR_FLAG_WRITABLE
-                               | PAGE_DIR_FLAG_ACCESSED | PAGE_DIR_FLAG_DIRTY);
-            PageTable[j+1] = 0;
+            PageTable->low = addr |
+                             (PAGE_DIR_FLAG_PRESENT | PAGE_DIR_FLAG_WRITABLE
+                                 | PAGE_DIR_FLAG_ACCESSED | PAGE_DIR_FLAG_DIRTY);
+            PageTable->high = 0;
         }
-        PageTable += 1024;
     }
 
     // map the program area from 4MB virtual
     for (DWORD ProgramOffset = 0;
          ProgramOffset < pStartup->ProgramSize + PAGE_SIZE-1; ProgramOffset += PAGE_SIZE)
     {
-        unsigned index = (unsigned)(((ProgramOffset + pStartup->ImageBase) / 0x1000u) * 2);
+        unsigned index = (unsigned)((ProgramOffset + pStartup->ImageBase) / PAGE_SIZE);
 
-        pPageTableBuffer->PageTableArray[index]
+        pPageTableBuffer->PageTableArray[index].low
             = (pStartup->ProgramBaseAllocatedFlat + ProgramOffset)
                 | (PAGE_DIR_FLAG_PRESENT | PAGE_DIR_FLAG_WRITABLE
                     | PAGE_DIR_FLAG_ACCESSED | PAGE_DIR_FLAG_DIRTY);
-        pPageTableBuffer->PageTableArray[index + 1] = 0;
+        pPageTableBuffer->PageTableArray[index].high = 0;
     }
 
     // Create starting interrupt table

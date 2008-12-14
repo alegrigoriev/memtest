@@ -184,11 +184,23 @@ struct GATE
     WORD offset_16_31;
 };
 
+union PageTableElement
+{
+    struct
+    {
+        DWORD   low;
+        DWORD   high;
+    };
+#if defined(_M_IX86) && _M_IX86 >= 500
+    ULONGLONG q;
+#endif
+};
+
 struct PageTable
 {
-    DWORD PageDirPointerTable[1024];
-    DWORD PageDirectory[1024*4];
-    DWORD PageTableArray[1024];    // to address 32 MB, add 15 more pages
+    PageTableElement PageDirPointerTable[PAGE_DESCRIPTORS_PER_PAGE];
+    PageTableElement PageDirectory[PAGE_DESCRIPTORS_PER_PAGE*4];
+    PageTableElement PageTableArray[PAGE_DESCRIPTORS_PER_PAGE];    // to address 32 MB, add 15 more pages
 };
 
 struct PROTECTED_MODE_STARTUP_MEMORY
