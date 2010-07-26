@@ -1958,6 +1958,7 @@ void TestThread::DoMemoryTestPattern(char * addr, size_t _size,
         {
             break;
         }
+        RelocateProgram();
     }
 }
 
@@ -2336,14 +2337,23 @@ unsigned TestThread::TestFunction()
 
             seed = DoRandomMemoryTest(TestStartVirtAddr, MemoryTestWindowSize,
                                       seed, 0x08080000, flags, MemoryFlags);
+
+            RelocateProgram();
+
             DoMemoryTestPattern(TestStartVirtAddr,
                                 MemoryTestWindowSize, 0x00000000, 0x00000000, flags, MemoryFlags);
+
+            RelocateProgram();
 
             DoMemoryTestPattern(TestStartVirtAddr,
                                 MemoryTestWindowSize, 0xFFFFFFFF, 0xFFFFFFFF, flags, MemoryFlags);
 
+            RelocateProgram();
+
             DoMemoryTestPattern(TestStartVirtAddr,
                                 MemoryTestWindowSize, m_Pattern1, m_Pattern2, flags, MemoryFlags);
+
+            RelocateProgram();
 
             DoMemoryTestPattern(TestStartVirtAddr,
                                 MemoryTestWindowSize, m_Pattern2, m_Pattern1, flags, MemoryFlags);
