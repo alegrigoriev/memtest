@@ -366,7 +366,13 @@ label1:;
 
 #define TRUE 1
 #define FALSE 0
-#define ASSERT(x)
+#ifdef _DEBUG
+#define ASSERT(condition) do if ( ! (condition)) {my_puts(__FUNCTION__ " ASSERT for \"" #condition "\"", FALSE); while(1) CheckForKey(); } while(FALSE)
+#define ASSERT_INFO(condition, format, ...) do if ( ! (condition)) {my_printf(FALSE, __FUNCTION__ " ASSERT for \"" #condition "\" " format, __VA_ARGS__); while(1) CheckForKey(); } while(FALSE)
+#else
+#define ASSERT(condition) do {} while(FALSE)
+#define ASSERT_INFO(condition, format, ...) do {} while(FALSE)
+#endif
 
 void MemtestObject::my_puts(const char * str, BOOL IsErrMsg,
                             unsigned __int16 color_mask)
@@ -1676,13 +1682,8 @@ void TestThread::CompareTestData(char * addr, size_t size,
 
         //size_t row_size = 0;
         // MemoryRowSize <= cache2_preload_size
-#ifdef  _DEBUG
-        if (MemoryRowSize > cache2_preload_size)
-        {
-            my_puts("MemoryRowSize > cache2_preload_size\n", FALSE);
-            while(1);
-        }
-#endif
+        ASSERT(MemoryRowSize <= cache2_preload_size);
+
         size -= test_size;
         while(test_size != 0)
         {
@@ -1693,13 +1694,8 @@ void TestThread::CompareTestData(char * addr, size_t size,
             }
             if (flags & (TEST_ALL0 | TEST_ALL1))
             {
-#ifdef _DEBUG
-                if (flags & TEST_REPLACE)
-                {
-                    my_puts("\nWrong flags in CompareTestData\n", FALSE);
-                    while(1);
-                }
-#endif
+                ASSERT(0 == (flags & TEST_REPLACE));
+
                 CompareMemory(addr, row_size, pattern1);
             }
             else
@@ -1740,13 +1736,8 @@ void TestThread::CompareTestDataBackward(char * addr, size_t size,
         __wbinvd();
     }
 
-#ifdef _DEBUG
-    if (size % MemoryRowSize != 0)
-    {
-        my_puts("(size % MemoryRowSize != 0) in CompareTestDataBackward\n", FALSE);
-        while(1);
-    }
-#endif
+    ASSERT (size % MemoryRowSize == 0);
+
     if (0 == ((size / MemoryRowSize) & 1))
     {
         DWORD tmp = pattern1;
@@ -1769,13 +1760,8 @@ void TestThread::CompareTestDataBackward(char * addr, size_t size,
             PreloadCache(addr - test_size, test_size);
         }
 
-#ifdef  _DEBUG
-        if (MemoryRowSize > cache2_preload_size)
-        {
-            my_puts("MemoryRowSize > cache2_preload_size\n", FALSE);
-            while(1);
-        }
-#endif
+        ASSERT (MemoryRowSize <= cache2_preload_size);
+
         size -= test_size;
         while(test_size != 0)
         {
@@ -1787,13 +1773,8 @@ void TestThread::CompareTestDataBackward(char * addr, size_t size,
             addr -= row_size;
             if (flags & (TEST_ALL0 | TEST_ALL1))
             {
-#ifdef _DEBUG
-                if (flags & TEST_REPLACE)
-                {
-                    my_puts("\nWrong flags in CompareTestData\n", FALSE);
-                    while(1);
-                }
-#endif
+                ASSERT(0 == (flags & TEST_REPLACE));
+
                 CompareMemoryBackward(addr, row_size, pattern1);
             }
             else
@@ -2724,13 +2705,9 @@ PHYSICAL_ADDR GetPhysAddr(void * VirtAddr)
     {
         return VirtAddr;
     }
-#ifdef _DEBUG
-    if (VirtAddr >= TopVirtualAddress)
-    {
-        my_puts("Error In GetPhysAddr", FALSE);
-        while(1);
-    }
-#endif
+
+    ASSERT_INFO(VirtAddr <= TopVirtualAddress, "VirtAddr=%x, TopVirtualAddress=%x", VirtAddr, TopVirtualAddress);
+
     // parse page table manually
     DWORD Addr = (DWORD) VirtAddr;
 
@@ -2753,16 +2730,11 @@ void MapVirtualToPhysical(void * VirtAddr, PHYSICAL_ADDR PhysAddr, size_t size,
                           ULONGLONG* MapTable,
                           DWORD Flags)
 {
-#ifdef _DEBUG
-    if (VirtAddr >= TopVirtualAddress
-        || (ULONG_PTR(VirtAddr) & 0xFFF)
-        || (ULONGLONG(PhysAddr) & 0xFFF)
-        || (size & 0xFFF))
-    {
-        my_puts("Error In MapVirtualToPhysical", FALSE);
-        while(1);
-    }
-#endif
+    ASSERT_INFO(VirtAddr <= TopVirtualAddress, "VirtAddr=%x", VirtAddr);
+    ASSERT_INFO(0 == (ULONG_PTR(VirtAddr) & 0xFFF), "VirtAddr=%x", VirtAddr);
+    ASSERT_INFO(0 == (ULONGLONG(PhysAddr) & 0xFFF), "PhysAddr=%p", PhysAddr);
+    ASSERT_INFO(0 == (size & 0xFFF), "size=%x", size);
+
     while(size)
     {
         // if 2MB pages are supported, use this feature for 4MB
@@ -2837,14 +2809,9 @@ void MapVirtualToPhysical(void * VirtAddr, PHYSICAL_ADDR PhysAddr, size_t size,
 
 DWORD GetPageFlags(void * VirtAddr)
 {
-#ifdef _DEBUG
-    if (VirtAddr >= TopVirtualAddress
-        || ULONG_PTR(VirtAddr) & 0xFFF)
-    {
-        my_puts("Error In GetPageFlags", FALSE);
-        while(1);
-    }
-#endif
+    ASSERT_INFO(VirtAddr <= TopVirtualAddress, "VirtAddr=%x", VirtAddr);
+    ASSERT_INFO(0 == (ULONG_PTR(VirtAddr) & 0xFFF), "VirtAddr=%x", VirtAddr);
+
     ULONGLONG PageDirectoryElement = *GetPageDirectoryElement(VirtAddr, PageTablePtr);
     if (PageDirectoryElement & PAGE_DIR_FLAG_LARGE_PAGE)
     {
@@ -2862,17 +2829,11 @@ DWORD GetPageFlags(void * VirtAddr)
 void ModifyPageFlags(void * VirtAddr, size_t size, DWORD SetFlags,
                      DWORD ResetFlags, ULONGLONG *MapTable)
 {
-#ifdef _DEBUG
-    if (VirtAddr >= TopVirtualAddress
-        || DWORD(VirtAddr) & 0xFFF
-        || size & 0xFFF
-        || SetFlags & ~0xE7F
-        || ResetFlags & ~0xE7F)
-    {
-        my_puts("Error In ModifyPageFlags", FALSE);
-        while(1);
-    }
-#endif
+    ASSERT_INFO(VirtAddr <= TopVirtualAddress, "VirtAddr=%x", VirtAddr);
+    ASSERT_INFO(0 == (ULONG_PTR(VirtAddr) & 0xFFF), "VirtAddr=%x", VirtAddr);
+    ASSERT(0 == (SetFlags & ~0xE7F));
+    ASSERT(0 == (ResetFlags & ~0xE7F));
+
     while(size)
     {
         // if 4MB pages are supported, use this feature for 4MB
@@ -3219,16 +3180,10 @@ void InitPageTable(ULONGLONG * VirtPageDirAddress, size_t BufSize)
     // we need 4KB/2MB of first level PTE = 8MB for 4GB,
     // 16 KB of second level, 32B third level
     // for simplicity, we'll use 16 MB of virt space for the program and its tables
-#ifdef _DEBUG
-    if (DWORD(VirtPageDirAddress) & 0xFFF
-        || BufSize & 0xFFF
-        || BufSize < 0x3000
-        || BufSize > 0x401000)
-    {
-        my_puts("Error in InitPageTable\n", FALSE);
-        while(1);
-    }
-#endif
+    ASSERT(0 == (DWORD(VirtPageDirAddress) & 0xFFF));
+    ASSERT((BufSize & 0xFFF) == 0);
+    ASSERT(BufSize >= 0x3000);
+    ASSERT_INFO(BufSize <= RESERVED_FOR_PAGE_TABLE, "BufSize=%x", BufSize);
 
     memset(VirtPageDirAddress, 0, BufSize);
 
