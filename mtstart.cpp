@@ -86,7 +86,7 @@ BOOL LoadPE(char * pFilename, PROTECTED_MODE_STARTUP_DATA * pStartup)
         return FALSE;
     }
     // calculate required size and allocate the memory
-    DWORD ModuleRequiredMemory = PE_opt_header.ImageSize + 0x1000u; // page alignment
+    DWORD ModuleRequiredMemory = PE_opt_header.ImageSize + PAGE_SIZE; // page alignment
     // allocate memory
     char huge * pModuleMemory = (char __huge *) _halloc(ModuleRequiredMemory, 1);
     if (NULL == pModuleMemory)
@@ -176,7 +176,7 @@ void ProtectedModeStart(PROTECTED_MODE_STARTUP_DATA * pStartup)
     PROTECTED_MODE_STARTUP_MEMORY far * pAuxMemory =
         new far PROTECTED_MODE_STARTUP_MEMORY;
     // over 64 KB. __halloc supports that.
-    char huge * pTmp = (char huge *)_halloc(1 + sizeof PageTable/0x1000 + 15, 0x1000);
+    char huge * pTmp = (char huge *)_halloc(1 + sizeof PageTable/PAGE_SIZE + (INITIAL_MAPPED_VIRTUAL_MEMORY/LARGE_PAGE_SIZE)-1, PAGE_SIZE);
     if (NULL == pTmp)
     {
         printf("Unable to allocate startup memory\n");
@@ -224,7 +224,7 @@ void ProtectedModeStart(PROTECTED_MODE_STARTUP_DATA * pStartup)
                                                  | PAGE_DIR_FLAG_ACCESSED);
         pPageTableBuffer->PageDirectory[i+1] = 0;
 
-        for (unsigned j = 0; j < 1024; j+=2, addr += 0x1000)
+        for (unsigned j = 0; j < 1024; j+=2, addr += PAGE_SIZE)
         {
             PageTable[j] = addr |
                            (PAGE_DIR_FLAG_PRESENT | PAGE_DIR_FLAG_WRITABLE
@@ -241,9 +241,9 @@ void ProtectedModeStart(PROTECTED_MODE_STARTUP_DATA * pStartup)
 
     // fill PageDir1 to map the program area from 4MB virtual
     for (addr = GetFlatAddress(pStartup->pProgramBase);
-         addr < pStartup->ProgramSize + GetFlatAddress(pStartup->pProgramBase) + 0xFFF; addr += 0x1000)
+        addr < pStartup->ProgramSize + GetFlatAddress(pStartup->pProgramBase) + (PAGE_SIZE-1); addr += PAGE_SIZE)
     {
-        pPageTableBuffer->PageTableArray[(addr / 0x1000u) * 2]
+        pPageTableBuffer->PageTableArray[(addr / PAGE_SIZE) * 2]
             = addr
                 | (PAGE_DIR_FLAG_PRESENT | PAGE_DIR_FLAG_WRITABLE
                     | PAGE_DIR_FLAG_ACCESSED | PAGE_DIR_FLAG_DIRTY);
