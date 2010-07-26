@@ -140,7 +140,7 @@ BOOL TestPageForPresence(void * VirtAddr, BOOL FastDetect);
 DWORD GetPageFlags(void * VirtAddr);
 void ModifyPageFlags(void * VirtAddr, size_t size, DWORD SetFlags,
                      DWORD ResetFlags = 0, PageTable *MapTable = PageTablePtr);
-PHYSICAL_ADDR GetPhysAddr(void * VirtAddr);    // convert physical to virtual
+PHYSICAL_ADDR GetPhysAddr(void * VirtAddr, PageTable * pPageTable = PageTablePtr);    // convert physical to virtual
 void MapVirtualToPhysical(void * VirtAddr, PHYSICAL_ADDR PhysAddr, size_t size,
                           PageTable* MapTable = PageTablePtr,
                           DWORD Flags = PAGE_DIR_FLAG_PRESENT
@@ -2500,7 +2500,7 @@ char * InitMemtest(MEMTEST_STARTUP_PARAMS * pTestParams)
     }
 
     // Detect installed memory size
-    TopVirtualAddress = (void*)TEST_AREA_START_VIRTUAL;
+    TopVirtualAddress = (void*)(INITIAL_MAPPED_VIRTUAL_MEMORY-1);
     PageTablePtr = (PageTable*)__readcr3();
     // physical address now is the same as virtual
     PageTablePhysicalAddr = (PHYSICAL_ADDR)PageTablePtr;
@@ -2510,7 +2510,7 @@ char * InitMemtest(MEMTEST_STARTUP_PARAMS * pTestParams)
 
     DetectInstalledMemory( & TestParams);
 
-    if (TestParams.MemoryTop < 32)  // megabytes
+    if (pMemoryToTestEnd < (PHYSICAL_ADDR) INITIAL_MAPPED_VIRTUAL_MEMORY)  // 32 megabytes
     {
         my_puts("Too little memory installed (< 32M).\n"
                 "Press RESET button"
@@ -2528,7 +2528,7 @@ char * InitMemtest(MEMTEST_STARTUP_PARAMS * pTestParams)
               (TestParams.MemoryTop - TestParams.MemoryStart));
 
     // allocate extra memory after the program for stack, TSS, GDT, IDT
-    TopProgramAddress = (char*)(TestParams.ProgramTop);
+    TopProgramAddress = (char*)((TestParams.ProgramTop + PAGE_SIZE-1) & ~(PAGE_SIZE-1));
     char * NewStack = TopProgramAddress + 0x4000; // 16 K
     DESCRIPTOR * pGDT = (DESCRIPTOR *) NewStack;
     const int GDT_SIZE = 12;
@@ -2550,10 +2550,14 @@ char * InitMemtest(MEMTEST_STARTUP_PARAMS * pTestParams)
     MemoryInUseByProgram = ULONG_PTR(TopUsedAddress) - PROGRAM_BASE_ADDRESS;
 
     InitPageTable(pPageDirectory, PageTableSize);
-    TopVirtualAddress = (void *)((PageTableSize - 5*PAGE_SIZE) * 0x200);
+
+    CurrentPhysProgramLocation = GetPhysAddr((void*)PROGRAM_BASE_ADDRESS, pPageDirectory);
+
+    PhysMemoryProgramUsedEnd = CurrentPhysProgramLocation + MemoryInUseByProgram;
+    TopVirtualAddress = (void *)((PageTableSize - 5*PAGE_SIZE) * PAGE_DESCRIPTORS_PER_PAGE - 1);
 
     // init new GDT
-    // 32 bit data and stack segment sescriptor
+    // 32 bit data and stack segment descriptor
     InitDescriptor(pGDT[8], 0LU, 0xFFFFFFFF,
                    SEG_DESC_DATA_32BIT);
     // 32 bit code segment descriptor
@@ -2671,24 +2675,24 @@ extern "C" void _cdecl MemtestStartup(MEMTEST_STARTUP_PARAMS * pTestParams)
     while(1);
 }
 
-PageTableElement* GetPageDirectoryElement(void * VirtAddr, PageTable * pPageTable)
+PageTableElement* GetPageDirectoryElement(void * VirtAddr, PageTable * pPageTable = PageTablePtr)
 {
     return &pPageTable->PageDirectory[(ULONG_PTR(VirtAddr) >> 21) & 0x7FF];
 }
 
-PageTableElement* GetPageTableElement(void * VirtAddr, PageTable * pPageTable)
+PageTableElement* GetPageTableElement(void * VirtAddr, PageTable * pPageTable = PageTablePtr)
 {
     return &pPageTable->PageTableArray[ULONG_PTR(VirtAddr) >> 12];
 }
     // convert physical to virtual
-PHYSICAL_ADDR GetPhysAddr(void * VirtAddr)
+PHYSICAL_ADDR GetPhysAddr(void * VirtAddr, PageTable * pPageTable)
 {
     ASSERT_INFO(VirtAddr <= TopVirtualAddress, "VirtAddr=%x, TopVirtualAddress=%x", VirtAddr, TopVirtualAddress);
 
     // parse page table manually
     DWORD Addr = (DWORD) VirtAddr;
 
-    PageTableElement PageDirectoryElement = *GetPageDirectoryElement(VirtAddr, PageTablePtr);
+    PageTableElement PageDirectoryElement = *GetPageDirectoryElement(VirtAddr, pPageTable);
     if (PageDirectoryElement.low & PAGE_DIR_FLAG_LARGE_PAGE)
     {
         // page is 2 megabyte
@@ -2697,8 +2701,8 @@ PHYSICAL_ADDR GetPhysAddr(void * VirtAddr)
     }
     else
     {
-        PageTableElement PageTableElement = *GetPageTableElement(VirtAddr, PageTablePtr);
-        return PHYSICAL_ADDR((PageTableElement.q & -0x00001000LL) +
+        PageTableElement PageTableElement = *GetPageTableElement(VirtAddr, pPageTable);
+        return PHYSICAL_ADDR((PageTableElement.q & (-1LL << 12)) +
                              (Addr & (PAGE_SIZE-1)));
     }
 }
@@ -2761,7 +2765,7 @@ void MapVirtualToPhysical(void * VirtAddr, PHYSICAL_ADDR PhysAddr, size_t size,
             if (PageDirectoryElement->low & PAGE_DIR_FLAG_LARGE_PAGE)
             {
                 PageDirectoryElement->q =
-                    (ULONGLONG(GetPhysAddr(PageTableElement)) & ~0xFFFULL)
+                    (ULONGLONG(GetPhysAddr(PageTableElement, MapTable)) & ~0xFFFULL)
                     | PAGE_DIR_FLAG_PRESENT
                     | PAGE_DIR_FLAG_WRITABLE
                     | (Flags & (0xFFF & ~PAGE_DIR_FLAG_LARGE_PAGE));
@@ -2851,7 +2855,7 @@ void ModifyPageFlags(void * VirtAddr, size_t size, DWORD SetFlags,
             if (PageDirectoryElement->low & PAGE_DIR_FLAG_LARGE_PAGE)
             {
                 PageDirectoryElement->q =
-                    (ULONGLONG(GetPhysAddr(PageTableElement)) & ~0xFFFULL)
+                    (ULONGLONG(GetPhysAddr(PageTableElement, MapTable)) & ~0xFFFULL)
                     | PAGE_DIR_FLAG_PRESENT
                     | PAGE_DIR_FLAG_WRITABLE;
             }
@@ -2893,26 +2897,22 @@ void ModifyPageFlags(void * VirtAddr, size_t size, DWORD SetFlags,
 void RelocateProgram(void)
 {
     // map an area where to copy code and data segments
+    // the program only gets relocated if we need to test the memory below what the program needs
     if (DWORD(pMemoryToTestStart) < 16*MEGABYTE || NULL == CurrentPhysProgramLocation)
     {
-        if (NULL == CurrentPhysProgramLocation)
+        CurrentPhysProgramLocation = OFFSET_FOR_NEXT_PASS + CurrentPhysProgramLocation;
+        if (CurrentPhysProgramLocation > (PHYSICAL_ADDR) GIGABYTE)  //FIXME
         {
-            CurrentPhysProgramLocation = (PHYSICAL_ADDR)0x00800000;
-        }
-        CurrentPhysProgramLocation = 0x1000000 + CurrentPhysProgramLocation;
-        if (CurrentPhysProgramLocation > pMemoryToTestEnd - 0x400000
-            || CurrentPhysProgramLocation >= (PHYSICAL_ADDR)0x20000000)
-        {
-            CurrentPhysProgramLocation = (PHYSICAL_ADDR)0x00800000;
+            CurrentPhysProgramLocation = (PHYSICAL_ADDR)INITIAL_PROGRAM_LOCATION_PHYS;
         }
 
 #ifdef _DEBUG
         my_printf(FALSE, "\rRelocating the program to %X\n", CurrentPhysProgramLocation);
 #endif
         PhysMemoryProgramUsedEnd = CurrentPhysProgramLocation + MemoryInUseByProgram;
-        MapVirtualToPhysical((void*)0x800000, CurrentPhysProgramLocation,
+        MapVirtualToPhysical((void*)TEST_AREA_START_VIRTUAL, CurrentPhysProgramLocation,
                              MemoryInUseByProgram);
-        PageTable * pNewPageDirectory = (PageTable*)((PUCHAR)PageTablePtr + 0x800000); // 1M QWORDS=8 MB up
+        PageTable * pNewPageDirectory = (PageTable*)((PUCHAR)PageTablePtr + OFFSET_FOR_NEXT_PASS);
 
         // Init and copy page directory
         InitPageTable(pNewPageDirectory, PageTableSize);
@@ -2920,11 +2920,10 @@ void RelocateProgram(void)
                              MemoryInUseByProgram, pNewPageDirectory);
 
         // switch to new page directory
-        PHYSICAL_ADDR pNewPhysTablePtr = GetPhysAddr(pNewPageDirectory);
-        PageTablePtr = (PageTable*)(ULONG_PTR)(ULONGLONG)pNewPhysTablePtr;
+        PHYSICAL_ADDR pNewPhysTablePtr = GetPhysAddr(pNewPageDirectory, PageTablePtr);
 
         // copy program code and data segment
-        memcpy((void *)OFFSET_FOR_NEXT_PASS, (void *) PROGRAM_BASE_ADDRESS,
+        memcpy((void *) TEST_AREA_START_VIRTUAL, (void *) PROGRAM_BASE_ADDRESS,
                DWORD(TopProgramAddress) - PROGRAM_BASE_ADDRESS);
 
         SwitchPageTable(pNewPhysTablePtr);
@@ -3081,8 +3080,14 @@ void InitPageTable(PageTable * VirtPageDirAddress, size_t BufSize)
                                                        | PAGE_DIR_FLAG_PRESENT;
     }
 
-    // map lower 16 MB as currently is, to allow for page table switch
-    for (char * addr = 0;DWORD(addr) < 0x1000000; addr += PAGE_SIZE)
+    for (unsigned i = 0; i < PAGE_DESCRIPTORS_PER_PAGE*4; i++)
+    {
+        VirtPageDirAddress->PageDirectory[i].q = ULONGLONG(GetPhysAddr(
+                                                               &VirtPageDirAddress->PageTableArray[i*PAGE_DESCRIPTORS_PER_PAGE]))
+                                                 | PAGE_DIR_FLAG_PRESENT | PAGE_DIR_FLAG_WRITABLE;
+    }
+    // map lower 32 MB as currently is, to allow for page table switch
+    for (char * addr = 0;DWORD(addr) < 32*MEGABYTE; addr += PAGE_SIZE)
     {
         MapVirtualToPhysical(addr, GetPhysAddr(addr), PAGE_SIZE,
                              VirtPageDirAddress,
