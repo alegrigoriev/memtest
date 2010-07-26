@@ -257,8 +257,8 @@ struct MEMTEST_STARTUP_PARAMS
                   | TEST_EMPTY_CACHE
                   | TEST_SEESAW
                   | TEST_DELAY;
-        m_Pattern1 = 0x80008000L;
-        m_Pattern2 = ~0x80008000L;
+        m_Pattern1 = 0x00FF007FL;   // 0000 0000 1111 1111 0000 0000 0111 1111
+        m_Pattern2 = 0xF708FF40L;   // 1111 0111 0000 1000 1111 1111 0100 0000
         m_PassCount = 0;
         SMIEAddr = 0;
         CursorRow = 0;
