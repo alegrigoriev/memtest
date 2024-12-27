@@ -1,0 +1,17 @@
+# Editor configuration file
+
+# End .editorconfig scan at this directory level
+root = true
+
+[**]
+charset = utf-8
+indent_size = 4
+tab_width = 4
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.{c,cpp,h,hpp}]
+indent_style = space
+
+[*.htm]
+charset = windows-1251

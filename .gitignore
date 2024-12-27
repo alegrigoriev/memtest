@@ -1,0 +1,8 @@
+
+*.suo
+*.aps
+.vs/
+Debug/
+Release/
+*.obj
+*.user
